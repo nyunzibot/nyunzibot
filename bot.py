@@ -5,6 +5,7 @@ import logging
 import json
 import os
 import asyncio
+import sqlite3
 import discord
 import xml.etree.ElementTree as ET
 from discord.ext import commands
@@ -22,6 +23,9 @@ USER_AGENT = "Rule34DiscordBot/1.0"
 RULE34_API_KEY = "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c21827b2222c2c3c59352c7a1b847b0d1e869838aee87a59a2d2bddb6811bbbdcae8"
 RULE34_USER_ID = "5699450"
 
+# Put this on a Railway Volume for persistence, e.g. /data/stats.sqlite3
+DB_PATH = "/data/stats.sqlite3" or "stats.sqlite3"
+
 # =========================
 # TAGS (EDIT FREELY)
 # Add safety excludes to reduce accidental underage content.
@@ -30,7 +34,7 @@ PLAP_TAGS = "futa_on_female ass_slap -video -gif -loli -shota -furry"
 SUCC_TAGS = "futa_on_female oral -video -gif -loli -shota -furry"
 
 if not TOKEN:
-    logging.warning("DISCORD_TOKEN is missing! The bot will not be able to log in.")
+    logging.warning("TOKEN is missing! The bot will not be able to log in.")
 if not RULE34_API_KEY or not RULE34_USER_ID:
     logging.warning("RULE34_API_KEY or RULE34_USER_ID missing! Image fetching will fail.")
 
@@ -41,7 +45,7 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
-# PLAP LINES
+# PLAP LINES (SEPARATE)
 # =========================
 PLAP_LINES_INTIMATE_NATURAL = [
     "😶 {actor} plaps {target} and stays close, letting the moment linger.",
@@ -67,7 +71,7 @@ PLAP_LINES_INTIMATE_NATURAL = [
 ]
 
 # =========================
-# SUCC LINES
+# SUCC LINES (SEPARATE)
 # =========================
 SUCC_LINES_INTIMATE = [
     "😳 {actor} succs {target}, slow at first, like they’re testing the reaction.",
@@ -83,7 +87,7 @@ SUCC_LINES_INTIMATE = [
 ]
 
 # =========================
-# ESCALATING SUMMARY LINES
+# ESCALATING SUMMARY LINES (SEPARATE)
 # =========================
 def plap_summary(actor: discord.User, target: discord.User, count: int) -> str:
     time_word = "time" if count == 1 else "times"
@@ -154,54 +158,85 @@ def succ_summary(actor: discord.User, target: discord.User, count: int) -> str:
     return random.choice(pool)
 
 # =========================
-# PERSISTENT STATS (SEPARATE STORES)
+# SQLITE STATS (PERSISTENT)
 # =========================
-class StatsStore:
+class StatsDB:
     def __init__(self, path: str):
         self.path = path
-        self.data = {"users": {}}
-        self.load()
+        self._init_db()
 
-    def load(self):
-        if not os.path.exists(self.path):
-            self.save()
-            return
-        try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                self.data = json.load(f)
-            if "users" not in self.data or not isinstance(self.data["users"], dict):
-                self.data = {"users": {}}
-        except Exception:
-            self.data = {"users": {}}
-            self.save()
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        return conn
 
-    def save(self):
-        try:
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2)
-        except Exception as e:
-            logging.exception("Failed to save stats: %r", e)
+    def _init_db(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True) if os.path.dirname(self.path) else None
+        with self._connect() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS stats (
+                    action TEXT NOT NULL,            -- 'plap' or 'succ'
+                    user_id TEXT NOT NULL,
+                    given INTEGER NOT NULL DEFAULT 0,
+                    received INTEGER NOT NULL DEFAULT 0,
+                    backs INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (action, user_id)
+                )
+            """)
+            conn.commit()
 
-    def _ensure_user(self, user_id: int):
-        uid = str(user_id)
-        if uid not in self.data["users"]:
-            self.data["users"][uid] = {"given": 0, "received": 0, "backs": 0}
-        return self.data["users"][uid]
+    async def _run(self, fn, *args):
+        return await asyncio.to_thread(fn, *args)
 
-    def record_action(self, actor_id: int, target_id: int, is_back: bool):
-        actor = self._ensure_user(actor_id)
-        target = self._ensure_user(target_id)
-        actor["given"] += 1
-        if is_back:
-            actor["backs"] += 1
-        target["received"] += 1
-        self.save()
+    async def record_action(self, action: str, actor_id: int, target_id: int, is_back: bool):
+        def work():
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO stats(action, user_id, given, received, backs) VALUES(?, ?, 0, 0, 0)",
+                    (action, str(actor_id)),
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO stats(action, user_id, given, received, backs) VALUES(?, ?, 0, 0, 0)",
+                    (action, str(target_id)),
+                )
 
-    def get_user(self, user_id: int):
-        return self._ensure_user(user_id)
+                if is_back:
+                    conn.execute(
+                        "UPDATE stats SET given = given + 1, backs = backs + 1 WHERE action = ? AND user_id = ?",
+                        (action, str(actor_id)),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE stats SET given = given + 1 WHERE action = ? AND user_id = ?",
+                        (action, str(actor_id)),
+                    )
 
-PLAP_STATS = StatsStore("plap_stats.json")
-SUCC_STATS = StatsStore("succ_stats.json")
+                conn.execute(
+                    "UPDATE stats SET received = received + 1 WHERE action = ? AND user_id = ?",
+                    (action, str(target_id)),
+                )
+                conn.commit()
+
+        await self._run(work)
+
+    async def get_user(self, action: str, user_id: int) -> dict:
+        def work():
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO stats(action, user_id, given, received, backs) VALUES(?, ?, 0, 0, 0)",
+                    (action, str(user_id)),
+                )
+                row = conn.execute(
+                    "SELECT given, received, backs FROM stats WHERE action = ? AND user_id = ?",
+                    (action, str(user_id)),
+                ).fetchone()
+                conn.commit()
+                return {"given": row[0], "received": row[1], "backs": row[2]}
+
+        return await self._run(work)
+
+STATS_DB = StatsDB(DB_PATH)
 
 # =========================
 # RULE34 FETCH (PARAMETRIZED)
@@ -274,7 +309,7 @@ async def fetch_image(tags: str, max_attempts: int = 3) -> str | None:
     return None
 
 # =========================
-# IMAGE DOWNLOAD + CONVERT
+# IMAGE DOWNLOAD + CONVERT (SPOILER)
 # =========================
 async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
     if not url:
@@ -329,10 +364,10 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
 # =========================
 # PLAP BACK VIEW
-# IMPORTANT: your discord.py build can't edit attachments with Message.edit(files=...).
+# NOTE: Your deployed discord.py build can't swap attachments via Message.edit(files=...).
 # So we:
-# 1) Edit the original message to update the button label (count)
-# 2) Send a NEW message that contains the FULL embed (text+count) + the NEW spoiler image
+# 1) Update the button label/count on the ORIGINAL message
+# 2) Send a NEW message that contains the FULL embed (text + count) + the NEW spoiler image
 # =========================
 class PlapBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -372,7 +407,7 @@ class PlapBackView(discord.ui.View):
             return
 
         self.count += 1
-        PLAP_STATS.record_action(actor_id=interaction.user.id, target_id=self.original_actor.id, is_back=True)
+        await STATS_DB.record_action("plap", interaction.user.id, self.original_actor.id, is_back=True)
 
         line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
             actor=interaction.user.mention,
@@ -380,7 +415,6 @@ class PlapBackView(discord.ui.View):
         )
         summary = plap_summary(interaction.user, self.original_actor, self.count)
 
-        # This is the FULL embed you want (text + count + image)
         full_embed = discord.Embed(
             description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(173, 216, 230),
@@ -391,20 +425,20 @@ class PlapBackView(discord.ui.View):
         )
         full_embed.set_image(url="attachment://action.jpg")
 
-        # Update the button label on the original message so the counter is visible there too
         button.label = f"Plapped ({self.count})"
         button.disabled = False
 
-        # Edit original message (no new file)
+        # Edit ORIGINAL message's view so the label/count updates (no attachments)
         try:
             await interaction.followup.edit_message(
                 message_id=interaction.message.id,
                 view=self,
             )
+            self.message = interaction.message
         except Exception:
             pass
 
-        # Send the FULL embed + NEW spoiler image as a NEW message
+        # Send FULL embed + spoiler image as a new message
         await interaction.followup.send(embed=full_embed, file=file)
 
 # =========================
@@ -448,7 +482,7 @@ class SuccBackView(discord.ui.View):
             return
 
         self.count += 1
-        SUCC_STATS.record_action(actor_id=interaction.user.id, target_id=self.original_actor.id, is_back=True)
+        await STATS_DB.record_action("succ", interaction.user.id, self.original_actor.id, is_back=True)
 
         line = random.choice(SUCC_LINES_INTIMATE).format(
             actor=interaction.user.mention,
@@ -474,6 +508,7 @@ class SuccBackView(discord.ui.View):
                 message_id=interaction.message.id,
                 view=self,
             )
+            self.message = interaction.message
         except Exception:
             pass
 
@@ -502,7 +537,7 @@ async def plap(interaction: discord.Interaction, target: discord.User):
         await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
         return
 
-    PLAP_STATS.record_action(actor_id=interaction.user.id, target_id=target.id, is_back=False)
+    await STATS_DB.record_action("plap", interaction.user.id, target.id, is_back=False)
 
     line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
         actor=interaction.user.mention,
@@ -547,7 +582,7 @@ async def succ(interaction: discord.Interaction, target: discord.User):
         await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
         return
 
-    SUCC_STATS.record_action(actor_id=interaction.user.id, target_id=target.id, is_back=False)
+    await STATS_DB.record_action("succ", interaction.user.id, target.id, is_back=False)
 
     line = random.choice(SUCC_LINES_INTIMATE).format(
         actor=interaction.user.mention,
@@ -578,8 +613,8 @@ async def succ(interaction: discord.Interaction, target: discord.User):
 async def stats(interaction: discord.Interaction, user: discord.User | None = None):
     user = user or interaction.user
 
-    pl = PLAP_STATS.get_user(user.id)
-    su = SUCC_STATS.get_user(user.id)
+    pl = await STATS_DB.get_user("plap", user.id)
+    su = await STATS_DB.get_user("succ", user.id)
 
     embed = discord.Embed(
         title="📊 Stats",
