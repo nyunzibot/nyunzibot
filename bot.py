@@ -18,9 +18,13 @@ from PIL import Image
 logging.basicConfig(level=logging.INFO)
 
 # =========================
-# SECRETS / CONFIG
-# Put these in Railway Variables (or your local env):
-# TOKEN, RULE34_API_KEY, RULE34_USER_ID
+# SECRETS (SET AS ENV VARS)
+# Railway Variables:
+# TOKEN
+# RULE34_API_KEY
+# RULE34_USER_ID
+# GELBOORU_API_KEY
+# GELBOORU_USER_ID
 # =========================
 TOKEN = "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg"
 BOORU_API = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
@@ -28,12 +32,17 @@ USER_AGENT = "Rule34DiscordBot/1.0"
 RULE34_API_KEY = "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c21827b2222c2c3c59352c7a1b847b0d1e869838aee87a59a2d2bddb6811bbbdcae8"
 RULE34_USER_ID = "5699450"
 
+# Gelbooru JSON API endpoint
+GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1"
+GELBOORU_API_KEY = "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e"
+GELBOORU_USER_ID = "1873378"
+
 # Put this on a Railway Volume for persistence, e.g. /data/stats.sqlite3
-# (This keeps your intent, but actually works in both environments.)
-DB_PATH = os.getenv("DB_PATH") or "/data/stats.sqlite3" or "stats.sqlite3"
+# (kept your intent/structure)
+DB_PATH = "/data/stats.sqlite3" or "stats.sqlite3"
 
 # =========================
-# SCORE FALLBACK SYSTEM
+# SCORE FALLBACK TIERS
 # =========================
 SCORE_TIERS = [
     "score:>50",
@@ -49,10 +58,13 @@ SCORE_TIERS = [
 PLAP_TAGS = "futa_on_female sex_from_behind -video -gif -loli -shota -young -underage -child -minor -kid -furry -anthro -feral -animal -bestiality -rape -raped -nonconsensual -forced -dubious_consent -incest -family -gore -blood -death -scat -watersports -vomit -diaper -inflation -vore -oviposition -egg -pregnant -birth -lactation"
 SUCC_TAGS = "futa_on_female oral -video -gif -loli -shota -young -underage -child -minor -kid -furry -anthro -feral -animal -bestiality -rape -raped -nonconsensual -forced -dubious_consent -incest -family -gore -blood -death -scat -watersports -vomit -diaper -inflation -vore -oviposition -egg -pregnant -birth -lactation"
 
+
 if not TOKEN:
     logging.warning("TOKEN is missing! The bot will not be able to log in.")
 if not RULE34_API_KEY or not RULE34_USER_ID:
-    logging.warning("RULE34_API_KEY or RULE34_USER_ID missing! Image fetching will fail.")
+    logging.warning("RULE34_API_KEY or RULE34_USER_ID missing! Rule34 image fetching will fail.")
+if not GELBOORU_API_KEY or not GELBOORU_USER_ID:
+    logging.warning("GELBOORU_API_KEY or GELBOORU_USER_ID missing! Gelbooru fetching will be skipped.")
 
 # =========================
 # BOT SETUP
@@ -255,10 +267,113 @@ class StatsDB:
 STATS_DB = StatsDB(DB_PATH)
 
 # =========================
-# RULE34 FETCH (SCORE FALLBACK + RETRIES=5)
-# Lowers score on: timeouts, 429s, XML parse errors, temp network issues, 0 posts
+# PER-SITE PID TUNING
+# (stricter tiers -> smaller pid range -> fewer empty pages)
 # =========================
-async def fetch_image(tags: str, max_attempts: int = 5) -> str | None:
+def pid_max_for(site: str, score_tag: str) -> int:
+    # You can tweak these anytime
+    if site == "gelbooru":
+        if score_tag == "score:>50":
+            return 20
+        if score_tag == "score:>40":
+            return 30
+        if score_tag == "score:>30":
+            return 45
+        if score_tag == "score:>20":
+            return 70
+        return 140  # no-score tier: broad results
+    else:  # rule34
+        if score_tag == "score:>50":
+            return 25
+        if score_tag == "score:>40":
+            return 40
+        if score_tag == "score:>30":
+            return 60
+        if score_tag == "score:>20":
+            return 90
+        return 180  # no-score tier: very broad
+
+# =========================
+# GELBOORU FETCH (JSON)
+# Lowers score on: timeouts, 429s, parse errors, temp network issues, 0 posts
+# =========================
+async def fetch_image_gelbooru(tags: str, max_attempts: int = 5) -> str | None:
+    if not GELBOORU_API_KEY or not GELBOORU_USER_ID:
+        return None
+
+    backoffs = [0.0, 1.0, 2.5, 5.0]
+
+    for score_tag in SCORE_TIERS:
+        full_tags = f"{tags} {score_tag}".strip()
+        tier_label = score_tag or "no-score"
+        pid_max = pid_max_for("gelbooru", score_tag)
+
+        print(f"[GEL FETCH] Trying tier='{tier_label}' pid_max={pid_max} tags='{full_tags}'")
+
+        for attempt in range(1, max_attempts + 1):
+            params = {
+                "limit": 1,
+                "pid": random.randint(0, pid_max),
+                "tags": full_tags,
+                "api_key": GELBOORU_API_KEY,
+                "user_id": GELBOORU_USER_ID,
+            }
+
+            try:
+                async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+                    async with session.get(
+                        GELBOORU_API,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        print(f"[GEL FETCH] tier={tier_label} attempt={attempt}/{max_attempts} status={resp.status}")
+
+                        if resp.status == 429:
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            break
+                        if resp.status != 200:
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            break
+
+                        data = await resp.json(content_type=None)
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                print(f"[GEL FETCH] tier={tier_label} exception={type(e).__name__}: {e} (lowering score)")
+                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                break
+            except Exception as e:
+                print(f"[GEL FETCH] tier={tier_label} JSON parse error: {type(e).__name__}: {e} (lowering score)")
+                break
+
+            posts = None
+            if isinstance(data, dict):
+                posts = data.get("post")
+            elif isinstance(data, list):
+                posts = data
+
+            if not posts:
+                print(f"[GEL FETCH] tier={tier_label} 0 posts (lowering score)")
+                break
+
+            if isinstance(posts, dict):
+                posts = [posts]
+
+            valid = [p for p in posts if isinstance(p, dict) and p.get("file_url")]
+            if not valid:
+                print(f"[GEL FETCH] tier={tier_label} no file_url posts (lowering score)")
+                break
+
+            return random.choice(valid).get("file_url")
+
+        print(f"[GEL FETCH] Dropping from tier '{tier_label}' → next tier")
+
+    return None
+
+# =========================
+# RULE34 FETCH (XML)
+# Lowers score on: timeouts, 429s, parse errors, temp network issues, 0 posts
+# =========================
+async def fetch_image_rule34(tags: str, max_attempts: int = 5) -> str | None:
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
     if not RULE34_API_KEY or not RULE34_USER_ID:
@@ -268,13 +383,14 @@ async def fetch_image(tags: str, max_attempts: int = 5) -> str | None:
     for score_tag in SCORE_TIERS:
         full_tags = f"{tags} {score_tag}".strip()
         tier_label = score_tag or "no-score"
+        pid_max = pid_max_for("rule34", score_tag)
 
-        print(f"[R34 FETCH] Trying tier='{tier_label}' tags='{full_tags}'")
+        print(f"[R34 FETCH] Trying tier='{tier_label}' pid_max={pid_max} tags='{full_tags}'")
 
         for attempt in range(1, max_attempts + 1):
             params = {
                 "limit": 1,
-                "pid": random.randint(0, 80),
+                "pid": random.randint(0, pid_max),
                 "tags": full_tags,
                 "api_key": RULE34_API_KEY,
                 "user_id": RULE34_USER_ID,
@@ -289,37 +405,28 @@ async def fetch_image(tags: str, max_attempts: int = 5) -> str | None:
                     ) as resp:
                         print(f"[R34 FETCH] tier={tier_label} attempt={attempt}/{max_attempts} status={resp.status} url={resp.url}")
 
-                        # lower score on 429s
                         if resp.status == 429:
-                            wait = backoffs[min(attempt, len(backoffs) - 1)]
-                            await asyncio.sleep(wait)
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                             break
 
-                        # lower score on non-200 (temporary issues)
                         if resp.status != 200:
-                            wait = backoffs[min(attempt, len(backoffs) - 1)]
-                            await asyncio.sleep(wait)
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                             break
 
                         xml = await resp.text()
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                # lower score on temporary network issues / timeouts
-                wait = backoffs[min(attempt, len(backoffs) - 1)]
                 print(f"[R34 FETCH] tier={tier_label} exception={type(e).__name__}: {e} (lowering score)")
-                await asyncio.sleep(wait)
+                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                 break
 
             try:
                 root = ET.fromstring(xml)
             except ET.ParseError as e:
-                # lower score on XML parse errors
                 print(f"[R34 FETCH] tier={tier_label} XML parse error: {e} (lowering score)")
                 break
 
             posts = root.findall("post")
-
-            # lower score on 0 posts
             if not posts:
                 print(f"[R34 FETCH] tier={tier_label} 0 posts (lowering score)")
                 break
@@ -335,6 +442,15 @@ async def fetch_image(tags: str, max_attempts: int = 5) -> str | None:
         print(f"[R34 FETCH] Dropping from tier '{tier_label}' → next tier")
 
     return None
+
+# =========================
+# WRAPPER: Gelbooru -> fallback to Rule34
+# =========================
+async def fetch_image(tags: str, max_attempts: int = 5) -> str | None:
+    url = await fetch_image_gelbooru(tags, max_attempts=max_attempts)
+    if url:
+        return url
+    return await fetch_image_rule34(tags, max_attempts=max_attempts)
 
 # =========================
 # IMAGE DOWNLOAD + CONVERT (SPOILER)
@@ -464,7 +580,7 @@ class PlapBackView(discord.ui.View):
         await interaction.followup.send(embed=full_embed, file=file)
 
 # =========================
-# SUCC BACK VIEW (same logic)
+# SUCC BACK VIEW
 # =========================
 class SuccBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
