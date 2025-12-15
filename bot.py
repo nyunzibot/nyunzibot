@@ -17,6 +17,11 @@ from PIL import Image
 # =========================
 logging.basicConfig(level=logging.INFO)
 
+# =========================
+# SECRETS / CONFIG
+# Put these in Railway Variables (or your local env):
+# TOKEN, RULE34_API_KEY, RULE34_USER_ID
+# =========================
 TOKEN = "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg"
 BOORU_API = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
 USER_AGENT = "Rule34DiscordBot/1.0"
@@ -24,11 +29,22 @@ RULE34_API_KEY = "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c2
 RULE34_USER_ID = "5699450"
 
 # Put this on a Railway Volume for persistence, e.g. /data/stats.sqlite3
-DB_PATH = "/data/stats.sqlite3" or "stats.sqlite3"
+# (This keeps your intent, but actually works in both environments.)
+DB_PATH = os.getenv("DB_PATH") or "/data/stats.sqlite3" or "stats.sqlite3"
+
+# =========================
+# SCORE FALLBACK SYSTEM
+# =========================
+SCORE_TIERS = [
+    "score:>50",
+    "score:>40",
+    "score:>30",
+    "score:>20",
+    "",  # final fallback: no score filter
+]
 
 # =========================
 # TAGS (EDIT FREELY)
-# Add safety excludes to reduce accidental underage content.
 # =========================
 PLAP_TAGS = "futa_on_female ass_slap -video -gif -loli -shota -young -underage -child -minor -kid-furry -anthro -feral -animal -bestiality -rape -raped -nonconsensual -forced -dubious_consent -incest -family -gore -blood -death -scat -watersports -vomit -diaper -inflation -vore -oviposition -egg -pregnant -birth -lactation"
 SUCC_TAGS = "futa_on_female oral -video -gif -loli -shota -young -underage -child -minor -kid -furry -anthro -feral -animal -bestiality -rape -raped -nonconsensual -forced -dubious_consent -incest -family -gore -blood -death -scat -watersports -vomit -diaper -inflation -vore -oviposition -egg -pregnant -birth -lactation"
@@ -239,72 +255,84 @@ class StatsDB:
 STATS_DB = StatsDB(DB_PATH)
 
 # =========================
-# RULE34 FETCH (PARAMETRIZED)
+# RULE34 FETCH (SCORE FALLBACK + RETRIES=5)
+# Lowers score on: timeouts, 429s, XML parse errors, temp network issues, 0 posts
 # =========================
-async def fetch_image(tags: str, max_attempts: int = 3) -> str | None:
+async def fetch_image(tags: str, max_attempts: int = 5) -> str | None:
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
     if not RULE34_API_KEY or not RULE34_USER_ID:
         print("[R34 FETCH] Missing RULE34_API_KEY or RULE34_USER_ID env vars.")
         return None
 
-    for attempt in range(1, max_attempts + 1):
-        params = {
-            "limit": 1,
-            "pid": random.randint(0, 80),
-            "tags": tags,
-            "api_key": RULE34_API_KEY,
-            "user_id": RULE34_USER_ID,
-        }
+    for score_tag in SCORE_TIERS:
+        full_tags = f"{tags} {score_tag}".strip()
+        tier_label = score_tag or "no-score"
 
-        try:
-            async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
-                async with session.get(
-                    BOORU_API,
-                    params=params,
-                    timeout=aiohttp.ClientTimeout(total=20),
-                ) as resp:
-                    print(f"[R34 FETCH] attempt={attempt}/{max_attempts} status={resp.status} url={resp.url}")
+        print(f"[R34 FETCH] Trying tier='{tier_label}' tags='{full_tags}'")
 
-                    if resp.status == 429:
-                        wait = backoffs[min(attempt, len(backoffs) - 1)]
-                        await asyncio.sleep(wait)
-                        continue
+        for attempt in range(1, max_attempts + 1):
+            params = {
+                "limit": 1,
+                "pid": random.randint(0, 80),
+                "tags": full_tags,
+                "api_key": RULE34_API_KEY,
+                "user_id": RULE34_USER_ID,
+            }
 
-                    if resp.status != 200:
-                        wait = backoffs[min(attempt, len(backoffs) - 1)]
-                        await asyncio.sleep(wait)
-                        continue
+            try:
+                async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+                    async with session.get(
+                        BOORU_API,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        print(f"[R34 FETCH] tier={tier_label} attempt={attempt}/{max_attempts} status={resp.status} url={resp.url}")
 
-                    xml = await resp.text()
+                        # lower score on 429s
+                        if resp.status == 429:
+                            wait = backoffs[min(attempt, len(backoffs) - 1)]
+                            await asyncio.sleep(wait)
+                            break
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            wait = backoffs[min(attempt, len(backoffs) - 1)]
-            print(f"[R34 FETCH] exception={type(e).__name__}: {e} — sleeping {wait}s")
-            await asyncio.sleep(wait)
-            continue
+                        # lower score on non-200 (temporary issues)
+                        if resp.status != 200:
+                            wait = backoffs[min(attempt, len(backoffs) - 1)]
+                            await asyncio.sleep(wait)
+                            break
 
-        try:
-            root = ET.fromstring(xml)
-        except ET.ParseError:
-            wait = backoffs[min(attempt, len(backoffs) - 1)]
-            await asyncio.sleep(wait)
-            continue
+                        xml = await resp.text()
 
-        posts = root.findall("post")
-        if not posts:
-            wait = backoffs[min(attempt, len(backoffs) - 1)]
-            await asyncio.sleep(wait)
-            continue
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                # lower score on temporary network issues / timeouts
+                wait = backoffs[min(attempt, len(backoffs) - 1)]
+                print(f"[R34 FETCH] tier={tier_label} exception={type(e).__name__}: {e} (lowering score)")
+                await asyncio.sleep(wait)
+                break
 
-        valid_posts = [p for p in posts if p.attrib.get("file_url")]
-        if not valid_posts:
-            wait = backoffs[min(attempt, len(backoffs) - 1)]
-            await asyncio.sleep(wait)
-            continue
+            try:
+                root = ET.fromstring(xml)
+            except ET.ParseError as e:
+                # lower score on XML parse errors
+                print(f"[R34 FETCH] tier={tier_label} XML parse error: {e} (lowering score)")
+                break
 
-        post = random.choice(valid_posts)
-        return post.attrib.get("file_url")
+            posts = root.findall("post")
+
+            # lower score on 0 posts
+            if not posts:
+                print(f"[R34 FETCH] tier={tier_label} 0 posts (lowering score)")
+                break
+
+            valid_posts = [p for p in posts if p.attrib.get("file_url")]
+            if not valid_posts:
+                print(f"[R34 FETCH] tier={tier_label} no file_url posts (lowering score)")
+                break
+
+            post = random.choice(valid_posts)
+            return post.attrib.get("file_url")
+
+        print(f"[R34 FETCH] Dropping from tier '{tier_label}' → next tier")
 
     return None
 
@@ -364,10 +392,6 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
 # =========================
 # PLAP BACK VIEW
-# NOTE: Your deployed discord.py build can't swap attachments via Message.edit(files=...).
-# So we:
-# 1) Update the button label/count on the ORIGINAL message
-# 2) Send a NEW message that contains the FULL embed (text + count) + the NEW spoiler image
 # =========================
 class PlapBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -396,7 +420,7 @@ class PlapBackView(discord.ui.View):
 
         await interaction.response.defer(thinking=True)
 
-        image_url = await fetch_image(PLAP_TAGS, max_attempts=3)
+        image_url = await fetch_image(PLAP_TAGS, max_attempts=5)
         if not image_url:
             await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
             return
@@ -428,7 +452,6 @@ class PlapBackView(discord.ui.View):
         button.label = f"Plapped ({self.count})"
         button.disabled = False
 
-        # Edit ORIGINAL message's view so the label/count updates (no attachments)
         try:
             await interaction.followup.edit_message(
                 message_id=interaction.message.id,
@@ -438,7 +461,6 @@ class PlapBackView(discord.ui.View):
         except Exception:
             pass
 
-        # Send FULL embed + spoiler image as a new message
         await interaction.followup.send(embed=full_embed, file=file)
 
 # =========================
@@ -471,7 +493,7 @@ class SuccBackView(discord.ui.View):
 
         await interaction.response.defer(thinking=True)
 
-        image_url = await fetch_image(SUCC_TAGS, max_attempts=3)
+        image_url = await fetch_image(SUCC_TAGS, max_attempts=5)
         if not image_url:
             await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
             return
@@ -527,7 +549,7 @@ async def plap(interaction: discord.Interaction, target: discord.User):
 
     await interaction.response.defer(thinking=True)
 
-    image_url = await fetch_image(PLAP_TAGS, max_attempts=3)
+    image_url = await fetch_image(PLAP_TAGS, max_attempts=5)
     if not image_url:
         await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
         return
@@ -572,7 +594,7 @@ async def succ(interaction: discord.Interaction, target: discord.User):
 
     await interaction.response.defer(thinking=True)
 
-    image_url = await fetch_image(SUCC_TAGS, max_attempts=3)
+    image_url = await fetch_image(SUCC_TAGS, max_attempts=5)
     if not image_url:
         await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
         return
