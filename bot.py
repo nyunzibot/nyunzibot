@@ -2,7 +2,6 @@ import random
 import aiohttp
 import io
 import logging
-import sys
 import os
 import asyncio
 import sqlite3
@@ -23,13 +22,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("nyunzi")
 log.info("Process boot ✅")
-
-# Ensure logs flush immediately on Railway
-try:
-    sys.stdout.reconfigure(line_buffering=True)
-    sys.stderr.reconfigure(line_buffering=True)
-except Exception:
-    pass
 
 # =========================
 # SECRETS (USE ENV VARS IN RAILWAY)
@@ -65,11 +57,11 @@ log.info("DB_PATH=%s", DB_PATH)
 log.info("Rule34 enabled=%s", bool(RULE34_API_KEY and RULE34_USER_ID))
 log.info("Gelbooru enabled=%s", bool(GELBOORU_API_KEY and GELBOORU_USER_ID))
 
-if not TOKEN or TOKEN == "<REDACTED>":
+if not TOKEN:
     log.warning("TOKEN missing! Bot cannot log in (set Railway variable TOKEN).")
-if not (RULE34_API_KEY and RULE34_USER_ID) or RULE34_API_KEY == "<REDACTED>":
+if not (RULE34_API_KEY and RULE34_USER_ID):
     log.warning("RULE34_API_KEY or RULE34_USER_ID missing! Rule34 fetching will be skipped.")
-if not (GELBOORU_API_KEY and GELBOORU_USER_ID) or GELBOORU_API_KEY == "<REDACTED>":
+if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
     log.warning("GELBOORU_API_KEY or GELBOORU_USER_ID missing! Gelbooru fetching will be skipped.")
 
 # =========================
@@ -89,6 +81,12 @@ DEDUP_PULL_TRIES = 6
 
 # =========================
 # TAGS
+# - Base tags define the "action"
+# - Positive sets rotate to improve quality/diversity
+# - Negatives reduce bad content
+#
+# NOTE: Your “not explicit” request conflicts with adult booru tags.
+# Keep/adjust these to what you want.
 # =========================
 NEGATIVE_TAGS = (
     "-video -gif "
@@ -103,16 +101,16 @@ NEGATIVE_TAGS = (
 )
 
 # Base tags (edit freely)
-PLAP_BASE = "futa_on_female"
-SUCC_BASE = "futa_on_female"
+PLAP_BASE = "futa_on_female sex_from_behind"
+SUCC_BASE = "futa_on_female oral"
 
 # Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
-    "sex_from_behind",
+    "1girl 1futa",
 ]
 
 SUCC_POSITIVE_SETS = [
-    "oral",
+    "1girl 1futa",
 ]
 
 def build_tags(base: str, positives: list[str]) -> str:
@@ -121,6 +119,23 @@ def build_tags(base: str, positives: list[str]) -> str:
     p = random.sample(positives, k=k)
     return f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
 
+def build_tag_variants(base: str, positives: list[str], *, tries: int = 4) -> list[str]:
+    """Return tag strings from most-specific -> least-specific.
+
+    Tries multiple random positive combos first, then falls back to base + negatives only.
+    """
+    variants: list[str] = []
+    for _ in range(max(1, tries)):
+        variants.append(build_tags(base, positives))
+    variants.append(f"{base} {NEGATIVE_TAGS}".strip())
+
+    # de-dup while preserving order
+    out: list[str] = []
+    for v in variants:
+        if v not in out:
+            out.append(v)
+    return out
+
 # =========================
 # BOT SETUP
 # =========================
@@ -128,37 +143,16 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
-# REUSE ONE HTTP SESSION
-# =========================
-HTTP: aiohttp.ClientSession | None = None
-_HTTP_WARNED = False
-
-def http_ready(context: str) -> bool:
-    """Ensure HTTP exists; if not, log once so it doesn't silently skip."""
-    global _HTTP_WARNED
-    if HTTP is None or HTTP.closed:
-        if not _HTTP_WARNED:
-            log.warning("[HTTP] session not ready in %s (HTTP is None/closed) — fetch logs will be missing until ready", context)
-            _HTTP_WARNED = True
-        return False
-    return True
-
-# =========================
 # SAFE INTERACTION ACK (prevents 10062)
+# IMPORTANT: call this as the FIRST awaited line in every command/callback
 # =========================
-_LAST_10062 = 0.0
-
 async def safe_defer(interaction: discord.Interaction, *, thinking: bool = True) -> bool:
-    global _LAST_10062
     try:
         if not interaction.response.is_done():
             await interaction.response.defer(thinking=thinking)
         return True
     except discord.NotFound:
-        now = time.time()
-        if now - _LAST_10062 > 5:
-            log.warning("[DEFER] Unknown interaction (10062) – clicked too late or network hiccup")
-            _LAST_10062 = now
+        log.warning("[DEFER] Unknown interaction (10062) – clicked too late or network hiccup")
         return False
     except Exception as e:
         log.warning("[DEFER] failed: %s: %s", type(e).__name__, e)
@@ -400,6 +394,7 @@ class InteractionSeen:
 # PID TUNING (BIGGER = fewer repeats)
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
+    # IMPORTANT: high score => fewer pages => repeats. So widen pid a lot.
     if site == "gelbooru":
         if score_tag == "score:>50": return 800
         if score_tag == "score:>40": return 1200
@@ -417,7 +412,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
 # GELBOORU FETCH (JSON) -> (url, md5, site)
 # =========================
 async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
-    if not (GELBOORU_API_KEY and GELBOORU_USER_ID) or GELBOORU_API_KEY == "<REDACTED>":
+    if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -443,24 +438,22 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                 }
 
                 try:
-                    if not http_ready("fetch_image_gelbooru"):
-                        return None
+                    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+                        async with session.get(
+                            GELBOORU_API,
+                            params=params,
+                            timeout=aiohttp.ClientTimeout(total=20),
+                        ) as resp:
+                            http_status = resp.status
+                            log.debug("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
-                    async with HTTP.get(
-                        GELBOORU_API,
-                        params=params,
-                        timeout=aiohttp.ClientTimeout(total=20),
-                    ) as resp:
-                        http_status = resp.status
-                        log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            if http_status == 429:
+                                await asyncio.sleep(backoffs[1])
+                                break
+                            if http_status != 200:
+                                break
 
-                        if http_status == 429:
-                            await asyncio.sleep(backoffs[1])
-                            break
-                        if http_status != 200:
-                            break
-
-                        data = await resp.json(content_type=None)
+                            data = await resp.json(content_type=None)
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     exc = e
@@ -496,9 +489,9 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                         continue
                     return (url, md5, "gelbooru")
 
-            log.info("[GEL FETCH] tier=%s lowering limit -> next", tier_label)
+            log.debug("[GEL FETCH] tier=%s lowering limit -> next", tier_label)
 
-        log.info("[GEL FETCH] tier=%s lowering score tier -> next", tier_label)
+        log.debug("[GEL FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
 
@@ -506,7 +499,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 # RULE34 FETCH (XML) -> (url, md5, site)
 # =========================
 async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
-    if not (RULE34_API_KEY and RULE34_USER_ID) or RULE34_API_KEY == "<REDACTED>":
+    if not (RULE34_API_KEY and RULE34_USER_ID):
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -531,24 +524,22 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                 }
 
                 try:
-                    if not http_ready("fetch_image_rule34"):
-                        return None
+                    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+                        async with session.get(
+                            RULE34_API,
+                            params=params,
+                            timeout=aiohttp.ClientTimeout(total=20),
+                        ) as resp:
+                            http_status = resp.status
+                            log.debug("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
-                    async with HTTP.get(
-                        RULE34_API,
-                        params=params,
-                        timeout=aiohttp.ClientTimeout(total=20),
-                    ) as resp:
-                        http_status = resp.status
-                        log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            if http_status == 429:
+                                await asyncio.sleep(backoffs[1])
+                                break
+                            if http_status != 200:
+                                break
 
-                        if http_status == 429:
-                            await asyncio.sleep(backoffs[1])
-                            break
-                        if http_status != 200:
-                            break
-
-                        xml = await resp.text()
+                            xml = await resp.text()
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     exc = e
@@ -578,9 +569,9 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                         continue
                     return (url, md5, "rule34")
 
-            log.info("[R34 FETCH] tier=%s lowering limit -> next", tier_label)
+            log.debug("[R34 FETCH] tier=%s lowering limit -> next", tier_label)
 
-        log.info("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
+        log.debug("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
 
@@ -588,17 +579,10 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 # WRAPPER: Gelbooru -> Rule34
 # =========================
 async def fetch_image(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
-    log.info("[FETCH] start tags=%r avoid_md5s=%s", tags, len(avoid_md5s))
     res = await fetch_image_gelbooru(tags, avoid_md5s)
     if res:
-        log.info("[FETCH] picked site=%s", res[2])
         return res
-    res = await fetch_image_rule34(tags, avoid_md5s)
-    if res:
-        log.info("[FETCH] picked site=%s", res[2])
-    else:
-        log.warning("[FETCH] no result from any source")
-    return res
+    return await fetch_image_rule34(tags, avoid_md5s)
 
 # =========================
 # IMAGE DOWNLOAD + PIL CONVERT (OFF LOOP)
@@ -628,24 +612,22 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
     for attempt in range(1, max_attempts + 1):
         try:
-            if not http_ready("process_image"):
-                return None
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    log.debug("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
 
-            async with HTTP.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
+                    if resp.status == 429:
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+                    if resp.status != 200:
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
 
-                if resp.status == 429:
-                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                    continue
-                if resp.status != 200:
-                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                    continue
-
-                raw = await resp.read()
+                    raw = await resp.read()
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             wait = backoffs[min(attempt, len(backoffs) - 1)]
-            log.info("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
+            log.debug("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
             await asyncio.sleep(wait)
             continue
 
@@ -660,10 +642,8 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 # PICK IMAGE: dynamic tags + dedup (interaction + persistent)
 # =========================
 async def pick_image(tags: str, interaction_seen: InteractionSeen) -> tuple[str, str | None, str] | None:
-    log.info("[PICK] tags=%r", tags)
     recent_seen = await STATS_DB.load_recent_seen(max_age_days=30)
     avoid = set(recent_seen) | set(interaction_seen.md5s)
-    log.info("[PICK] avoid_md5s=%s (recent=%s interaction=%s)", len(avoid), len(recent_seen), len(interaction_seen.md5s))
 
     picked = None
     for _ in range(DEDUP_PULL_TRIES):
@@ -678,11 +658,6 @@ async def pick_image(tags: str, interaction_seen: InteractionSeen) -> tuple[str,
 
     if picked and picked[1]:
         await STATS_DB.mark_seen(picked[1], picked[2])
-        log.info("[PICK] selected site=%s md5=%s", picked[2], picked[1])
-    elif picked:
-        log.info("[PICK] selected site=%s (no md5)", picked[2])
-    else:
-        log.warning("[PICK] no post matched (tags too strict or API limited)")
 
     return picked
 
@@ -719,8 +694,11 @@ class PlapBackView(discord.ui.View):
             await interaction.followup.send("Not for you 😤", ephemeral=True)
             return
 
-        tags = build_tags(PLAP_BASE, PLAP_POSITIVE_SETS)
-        picked = await pick_image(tags, self.seen)
+        picked = None
+        for tags in build_tag_variants(PLAP_BASE, PLAP_POSITIVE_SETS):
+            picked = await pick_image(tags, self.seen)
+            if picked:
+                break
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
@@ -784,8 +762,11 @@ class SuccBackView(discord.ui.View):
             await interaction.followup.send("Not for you 😤", ephemeral=True)
             return
 
-        tags = build_tags(SUCC_BASE, SUCC_POSITIVE_SETS)
-        picked = await pick_image(tags, self.seen)
+        picked = None
+        for tags in build_tag_variants(SUCC_BASE, SUCC_POSITIVE_SETS):
+            picked = await pick_image(tags, self.seen)
+            if picked:
+                break
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
@@ -826,7 +807,7 @@ class SuccBackView(discord.ui.View):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def plap(interaction: discord.Interaction, target: discord.User):
-    log.info("[CMD] /plap received interaction_id=%s user=%s target=%s", interaction.id, interaction.user.id, target.id)
+    # ACK FIRST (avoid 10062)
     ok = await safe_defer(interaction, thinking=True)
     if not ok:
         return
@@ -839,8 +820,11 @@ async def plap(interaction: discord.Interaction, target: discord.User):
 
     view = PlapBackView(interaction.user, target)
 
-    tags = build_tags(PLAP_BASE, PLAP_POSITIVE_SETS)
-    picked = await pick_image(tags, view.seen)
+    picked = None
+    for tags in build_tag_variants(PLAP_BASE, PLAP_POSITIVE_SETS):
+        picked = await pick_image(tags, view.seen)
+        if picked:
+            break
     if not picked:
         await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
         return
@@ -874,6 +858,7 @@ async def plap(interaction: discord.Interaction, target: discord.User):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def succ(interaction: discord.Interaction, target: discord.User):
+    # ACK FIRST (avoid 10062)
     ok = await safe_defer(interaction, thinking=True)
     if not ok:
         return
@@ -886,8 +871,11 @@ async def succ(interaction: discord.Interaction, target: discord.User):
 
     view = SuccBackView(interaction.user, target)
 
-    tags = build_tags(SUCC_BASE, SUCC_POSITIVE_SETS)
-    picked = await pick_image(tags, view.seen)
+    picked = None
+    for tags in build_tag_variants(SUCC_BASE, SUCC_POSITIVE_SETS):
+        picked = await pick_image(tags, view.seen)
+        if picked:
+            break
     if not picked:
         await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
         return
@@ -915,7 +903,8 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     view.message = msg
 
 # =========================
-# /stats (DM ONLY)
+# /stats (DM ONLY) - COMBINED
+# FIXED: defer first + followup (prevents 10062)
 # =========================
 @bot.tree.command(name="stats", description="View plap + succ stats (DM only)")
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
@@ -952,12 +941,7 @@ async def stats(interaction: discord.Interaction, user: discord.User | None = No
 # =========================
 @bot.event
 async def on_ready():
-    global HTTP
-    if HTTP is None or HTTP.closed:
-        HTTP = aiohttp.ClientSession(headers={"User-Agent": USER_AGENT})
-        log.info("[HTTP] session created ✅")
-
-    await bot.tree.sync()
+    await bot.tree.sync()  # global sync for DMs
     log.info("Logged in as %s", bot.user)
     log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
 
