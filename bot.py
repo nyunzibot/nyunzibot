@@ -21,11 +21,12 @@ logging.basicConfig(
     force=True,
 )
 log = logging.getLogger("nyunzi")
+
 log.info("Process boot ✅")
 
 # =========================
 # SECRETS (USE ENV VARS IN RAILWAY)
-# Railway Variables (recommended):
+# Railway Variables:
 # TOKEN
 # RULE34_API_KEY
 # RULE34_USER_ID
@@ -33,11 +34,10 @@ log.info("Process boot ✅")
 # GELBOORU_USER_ID
 # DB_PATH (optional)
 # =========================
-TOKEN = os.getenv("TOKEN", "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg")
+TOKEN = "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg"
 
 # Rule34 (XML)
 BOORU_API = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
-USER_AGENT = "Rule34DiscordBot/1.0"
 RULE34_API_KEY = "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c21827b2222c2c3c59352c7a1b847b0d1e869838aee87a59a2d2bddb6811bbbdcae8"
 RULE34_USER_ID = "5699450"
 
@@ -46,24 +46,29 @@ GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1"
 GELBOORU_API_KEY = "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e"
 GELBOORU_USER_ID = "1873378"
 
-# APIs
 USER_AGENT = "nyunzi-bot/1.0"
-RULE34_API = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"  # XML
-GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1"  # JSON
 
 # Persistent DB path (Railway Volume)
-DB_PATH = os.getenv("DB_PATH", "/data/stats.sqlite3")
+DB_PATH = "/data/stats.sqlite3"
 
-log.info("DB_PATH=%s", DB_PATH)
-log.info("Rule34 enabled=%s", bool(RULE34_API_KEY and RULE34_USER_ID))
-log.info("Gelbooru enabled=%s", bool(GELBOORU_API_KEY and GELBOORU_USER_ID))
+RULE34_ENABLED = bool(RULE34_API_KEY and RULE34_USER_ID)
+GELBOORU_ENABLED = bool(GELBOORU_API_KEY and GELBOORU_USER_ID)
 
 if not TOKEN:
     log.warning("TOKEN missing! Bot cannot log in (set Railway variable TOKEN).")
-if not (RULE34_API_KEY and RULE34_USER_ID):
-    log.warning("RULE34_API_KEY or RULE34_USER_ID missing! Rule34 fetching will be skipped.")
-if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
-    log.warning("GELBOORU_API_KEY or GELBOORU_USER_ID missing! Gelbooru fetching will be skipped.")
+if not RULE34_ENABLED:
+    log.warning("Rule34 disabled (RULE34_API_KEY/RULE34_USER_ID not set).")
+if not GELBOORU_ENABLED:
+    log.warning("Gelbooru disabled (GELBOORU_API_KEY/GELBOORU_USER_ID not set).")
+
+# =========================
+# BOT SETUP
+# =========================
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Reuse one HTTP session (reduces latency + helps with 3s ACK deadline)
+HTTP: aiohttp.ClientSession | None = None
 
 # =========================
 # SCORE + LIMIT BACKOFF
@@ -81,74 +86,65 @@ PAGES_PER_LIMIT = 3
 DEDUP_PULL_TRIES = 6
 
 # =========================
-# TAGS
-# - Base tags define the "action"
-# - Positive sets rotate to improve quality/diversity
-# - Negatives reduce bad content
-#
-# NOTE: Your “not explicit” request conflicts with adult booru tags.
-# Keep/adjust these to what you want.
+# SFW TAG POLICY (HARD LOCK)
 # =========================
+# We FORCE rating:safe so the bot is not an adult-content delivery bot.
+SAFE_TAG = "rating:safe"
+
 NEGATIVE_TAGS = (
     "-video -gif "
     "-loli -shota -young -underage -child -minor -kid "
     "-furry -anthro -feral -animal -bestiality "
-    "-rape -raped -nonconsensual -forced -dubious_consent "
-    "-incest -family "
     "-gore -blood -death "
     "-scat -watersports -vomit -diaper "
-    "-inflation -vore -oviposition -egg "
-    "-pregnant -birth -lactation"
 )
 
-# Base tags (edit freely)
-PLAP_BASE = "futa_on_female sex_from_behind"
-SUCC_BASE = "futa_on_female oral"
+# These are SFW-ish “vibes” tags; edit to your taste.
+PLAP_BASE = "1girl smile"          # (SFW)
+SUCC_BASE = "1girl blush"          # (SFW)
 
-# Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
-    "1girl 1futa consensual",
-    "highres masterpiece",
-    "detailed_background lighting",
-    "close-up blush",
-    "bedroom lingerie",
-    "romantic smile",
-    "cute expression",
+    "highres",
+    "masterpiece",
+    "soft_lighting",
+    "detailed_background",
+    "close-up",
+    "happy",
+    "cute",
 ]
 
 SUCC_POSITIVE_SETS = [
-    "1girl 1futa consensual",
-    "highres masterpiece",
-    "close-up blush",
-    "romantic smile",
-    "lingerie",
+    "highres",
+    "masterpiece",
     "soft_lighting",
-    "cute expression",
+    "close-up",
+    "gentle",
+    "cute",
 ]
 
 def build_tags(base: str, positives: list[str]) -> str:
-    # pick 1–2 positives to keep queries effective but not too strict
+    # pick 1–2 positives to keep queries effective (not overly restrictive)
     k = 2 if len(positives) >= 2 else 1
     p = random.sample(positives, k=k)
-    return f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
+    return f"{SAFE_TAG} {base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
 
 # =========================
-# BOT SETUP
+# SAFE DEFER (prevents 10062 Unknown interaction)
 # =========================
-intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
+_LAST_10062 = 0.0
 
-# =========================
-# SAFE INTERACTION ACK (prevents 10062)
-# IMPORTANT: call this as the FIRST awaited line in every command/callback
-# =========================
 async def safe_defer(interaction: discord.Interaction, *, thinking: bool = True) -> bool:
+    global _LAST_10062
     try:
         if not interaction.response.is_done():
             await interaction.response.defer(thinking=thinking)
         return True
     except discord.NotFound:
-        log.warning("[DEFER] Unknown interaction (10062) – clicked too late or network hiccup")
+        # 10062: Unknown interaction (ack too late)
+        now = time.time()
+        if now - _LAST_10062 > 5:
+            log.warning("[DEFER] Unknown interaction (10062) – ack too late (sleep/restart/CPU throttling/clicked late)")
+            _LAST_10062 = now
         return False
     except Exception as e:
         log.warning("[DEFER] failed: %s: %s", type(e).__name__, e)
@@ -166,42 +162,20 @@ def should_lower_limit(http_status: int | None, exc: Exception | None, parse_fai
     return False
 
 # =========================
-# LINES
+# LINES (SFW)
 # =========================
-PLAP_LINES_INTIMATE_NATURAL = [
-    "😶 {actor} plaps {target} and stays close, letting the moment linger.",
-    "🔥 Without hesitation, {actor} plaps {target}, closing the distance.",
-    "😳 {actor} plaps {target} with confidence, clearly aware of how close they are.",
-    "👁️ After {actor} plaps {target}, neither of them moves right away.",
-    "🫣 {actor} plaps {target} softly, but the intention is unmistakable.",
-    "😈 {actor} plaps {target} and remains right there, unbothered by the tension.",
-    "🔥 The way {actor} plaps {target} makes the closeness feel deliberate.",
-    "😳 {actor} plaps {target}, lingering just long enough to make it personal.",
-    "👀 Maintaining eye contact, {actor} plaps {target} without backing off.",
-    "🖤 {actor} plaps {target}, the space between them suddenly very small.",
-    "🔥 After {actor} plaps {target}, the playful energy shifts into something heavier.",
-    "😶‍🌫️ {actor} plaps {target} and doesn’t pretend the moment is still casual.",
-    "😈 Calm and certain, {actor} plaps {target} and stays close.",
-    "😳 {actor} plaps {target}, both clearly aware of the tension now.",
-    "🔥 The way {actor} plaps {target} leaves no room for misunderstanding.",
-    "👁️ {actor} plaps {target}, letting the silence do the talking.",
-    "🫶 With quiet confidence, {actor} plaps {target} and doesn’t pull away.",
-    "😈 {actor} plaps {target}, fully owning how intimate it suddenly feels.",
-    "🔥 {actor} plaps {target}, the closeness afterward very intentional.",
-    "😳 After {actor} plaps {target}, neither rushes to break the moment.",
+PLAP_LINES = [
+    "👋 {actor} playfully bonks {target} and grins.",
+    "✨ {actor} boops {target} and keeps the vibe light.",
+    "😄 {actor} gently taps {target} like “hey you”.",
+    "💫 {actor} gives {target} a playful smack (comically).",
 ]
 
-SUCC_LINES_INTIMATE = [
-    "😳 {actor} succs {target}, slow at first, like they’re testing the reaction.",
-    "🔥 {actor} succs {target} with zero hesitation, like this was inevitable.",
-    "🫣 {actor} succs {target} and doesn’t break the moment when it gets quiet.",
-    "😈 {actor} succs {target}, making it painfully clear who’s in control.",
-    "👁️ {actor} succs {target} and holds eye contact like it’s a challenge.",
-    "🖤 {actor} succs {target} and stays close afterward, unapologetic.",
-    "😶‍🌫️ {actor} succs {target}, and the vibe shifts into something heavier.",
-    "🫶 {actor} succs {target} with a calm confidence that’s hard to ignore.",
-    "🔥 {actor} succs {target}, lingering just long enough to make it personal.",
-    "😳 After {actor} succs {target}, neither of them rushes to reset the mood.",
+SUCC_LINES = [
+    "🫶 {actor} showers {target} with affection (wholesome version).",
+    "😊 {actor} gives {target} a cute little nudge and blushes.",
+    "✨ {actor} sends {target} a sweet vibe-check and smiles.",
+    "🌸 {actor} gets clingy (the wholesome kind) with {target}.",
 ]
 
 def plap_summary(actor: discord.User, target: discord.User, count: int) -> str:
@@ -215,19 +189,16 @@ def plap_summary(actor: discord.User, target: discord.User, count: int) -> str:
         pool = [
             f"{actor.mention} has now plapped {target.mention} {count} {time_word}!",
             f"{actor.mention} keeps plapping {target.mention} — {count} {time_word} now!",
-            f"{count} {time_word} in, and {actor.mention} isn’t stopping with {target.mention}.",
         ]
     elif count <= 6:
         pool = [
             f"{actor.mention} is on a roll — {count} {time_word} on {target.mention}!",
-            f"{count} {time_word} now… {actor.mention} is clearly committed to {target.mention}.",
-            f"{actor.mention} keeps coming back — {count} {time_word} and counting.",
+            f"{count} {time_word} now… {actor.mention} is committed 😭",
         ]
     else:
         pool = [
-            f"{count} {time_word}. Yeah. {actor.mention} is absolutely not done with {target.mention}.",
+            f"{count} {time_word}. Yeah. {actor.mention} is absolutely not stopping on {target.mention}.",
             f"{actor.mention} has lost count — but it’s at least {count} {time_word}.",
-            f"{actor.mention} keeps plapping {target.mention}. Nobody’s pretending anymore ({count} {time_word}).",
         ]
     return random.choice(pool)
 
@@ -242,19 +213,16 @@ def succ_summary(actor: discord.User, target: discord.User, count: int) -> str:
         pool = [
             f"{actor.mention} has now succ’d {target.mention} {count} {time_word}!",
             f"{actor.mention} keeps succ’ing {target.mention} — {count} {time_word} now!",
-            f"{count} {time_word} in, and {actor.mention} isn’t easing up on {target.mention}.",
         ]
     elif count <= 6:
         pool = [
             f"{actor.mention} is not subtle — {count} {time_word} on {target.mention}!",
-            f"{count} {time_word} now… {actor.mention} is making a point with {target.mention}.",
-            f"{actor.mention} keeps coming back — {count} {time_word} and counting.",
+            f"{count} {time_word} now… {actor.mention} is locked in 😭",
         ]
     else:
         pool = [
             f"{count} {time_word}. Yeah. {actor.mention} is absolutely locked in on {target.mention}.",
             f"{actor.mention} has lost count — but it’s at least {count} {time_word}.",
-            f"{actor.mention} keeps succ’ing {target.mention}. Nobody’s pretending anymore ({count} {time_word}).",
         ]
     return random.choice(pool)
 
@@ -327,7 +295,6 @@ class StatsDB:
                     (action, str(target_id)),
                 )
                 conn.commit()
-
         await self._run(work)
 
     async def get_user(self, action: str, user_id: int) -> dict:
@@ -343,7 +310,6 @@ class StatsDB:
                 ).fetchone()
                 conn.commit()
                 return {"given": row[0], "received": row[1], "backs": row[2]}
-
         return await self._run(work)
 
     async def mark_seen(self, md5: str, site: str):
@@ -354,12 +320,10 @@ class StatsDB:
                     (md5, site, int(time.time())),
                 )
                 conn.commit()
-
         await self._run(work)
 
     async def load_recent_seen(self, max_age_days: int = 30) -> set[str]:
         cutoff = int(time.time()) - max_age_days * 86400
-
         def work():
             with self._connect() as conn:
                 rows = conn.execute(
@@ -367,7 +331,6 @@ class StatsDB:
                     (cutoff,),
                 ).fetchall()
                 return {r[0] for r in rows if r and r[0]}
-
         return await self._run(work)
 
 STATS_DB = StatsDB(DB_PATH)
@@ -383,14 +346,10 @@ class InteractionSeen:
         if md5:
             self.md5s.add(md5)
 
-    def has(self, md5: str | None) -> bool:
-        return bool(md5) and md5 in self.md5s
-
 # =========================
 # PID TUNING (BIGGER = fewer repeats)
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
-    # IMPORTANT: high score => fewer pages => repeats. So widen pid a lot.
     if site == "gelbooru":
         if score_tag == "score:>50": return 800
         if score_tag == "score:>40": return 1200
@@ -408,7 +367,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
 # GELBOORU FETCH (JSON) -> (url, md5, site)
 # =========================
 async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
-    if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
+    if not GELBOORU_ENABLED or HTTP is None:
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -434,22 +393,17 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                 }
 
                 try:
-                    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
-                        async with session.get(
-                            GELBOORU_API,
-                            params=params,
-                            timeout=aiohttp.ClientTimeout(total=20),
-                        ) as resp:
-                            http_status = resp.status
-                            log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                    async with HTTP.get(GELBOORU_API, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                        http_status = resp.status
+                        log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
-                            if http_status == 429:
-                                await asyncio.sleep(backoffs[1])
-                                break
-                            if http_status != 200:
-                                break
+                        if http_status == 429:
+                            await asyncio.sleep(backoffs[1])
+                            break
+                        if http_status != 200:
+                            break
 
-                            data = await resp.json(content_type=None)
+                        data = await resp.json(content_type=None)
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     exc = e
@@ -495,7 +449,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 # RULE34 FETCH (XML) -> (url, md5, site)
 # =========================
 async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
-    if not (RULE34_API_KEY and RULE34_USER_ID):
+    if not RULE34_ENABLED or HTTP is None:
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -520,22 +474,17 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                 }
 
                 try:
-                    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
-                        async with session.get(
-                            RULE34_API,
-                            params=params,
-                            timeout=aiohttp.ClientTimeout(total=20),
-                        ) as resp:
-                            http_status = resp.status
-                            log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                    async with HTTP.get(RULE34_API, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                        http_status = resp.status
+                        log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
-                            if http_status == 429:
-                                await asyncio.sleep(backoffs[1])
-                                break
-                            if http_status != 200:
-                                break
+                        if http_status == 429:
+                            await asyncio.sleep(backoffs[1])
+                            break
+                        if http_status != 200:
+                            break
 
-                            xml = await resp.text()
+                        xml = await resp.text()
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     exc = e
@@ -575,16 +524,19 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 # WRAPPER: Gelbooru -> Rule34
 # =========================
 async def fetch_image(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
-    res = await fetch_image_gelbooru(tags, avoid_md5s)
-    if res:
-        return res
-    return await fetch_image_rule34(tags, avoid_md5s)
+    if GELBOORU_ENABLED:
+        res = await fetch_image_gelbooru(tags, avoid_md5s=avoid_md5s)
+        if res:
+            return res
+    if RULE34_ENABLED:
+        return await fetch_image_rule34(tags, avoid_md5s=avoid_md5s)
+    return None
 
 # =========================
 # IMAGE DOWNLOAD + PIL CONVERT (OFF LOOP)
 # =========================
 async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
-    if not url:
+    if not url or HTTP is None:
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -608,18 +560,18 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
     for attempt in range(1, max_attempts + 1):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
+            async with HTTP.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
 
-                    if resp.status == 429:
-                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                        continue
-                    if resp.status != 200:
-                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                        continue
+                if resp.status == 429:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
 
-                    raw = await resp.read()
+                if resp.status != 200:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+
+                raw = await resp.read()
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             wait = backoffs[min(attempt, len(backoffs) - 1)]
@@ -643,7 +595,7 @@ async def pick_image(tags: str, interaction_seen: InteractionSeen) -> tuple[str,
 
     picked = None
     for _ in range(DEDUP_PULL_TRIES):
-        res = await fetch_image(tags, avoid)
+        res = await fetch_image(tags, avoid_md5s=avoid)
         if not res:
             break
         url, md5, site = res
@@ -682,12 +634,14 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
-        if not ok:
-            return
+        log.info("[BTN] plap_back clicker=%s", interaction.user.id)
 
         if interaction.user.id != self.original_target.id:
-            await interaction.followup.send("Not for you 😤", ephemeral=True)
+            await interaction.response.send_message("Not for you 😤", ephemeral=True)
+            return
+
+        ok = await safe_defer(interaction, thinking=True)
+        if not ok:
             return
 
         tags = build_tags(PLAP_BASE, PLAP_POSITIVE_SETS)
@@ -706,7 +660,7 @@ class PlapBackView(discord.ui.View):
         self.count += 1
         await STATS_DB.record_action("plap", interaction.user.id, self.original_actor.id, is_back=True)
 
-        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=interaction.user.mention, target=self.original_actor.mention)
+        line = random.choice(PLAP_LINES).format(actor=interaction.user.mention, target=self.original_actor.mention)
         summary = plap_summary(interaction.user, self.original_actor, self.count)
 
         full_embed = discord.Embed(
@@ -717,6 +671,7 @@ class PlapBackView(discord.ui.View):
         full_embed.set_image(url="attachment://action.jpg")
 
         button.label = f"Plapped ({self.count})"
+
         try:
             await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             self.message = interaction.message
@@ -747,12 +702,14 @@ class SuccBackView(discord.ui.View):
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
-        if not ok:
-            return
+        log.info("[BTN] succ_back clicker=%s", interaction.user.id)
 
         if interaction.user.id != self.original_target.id:
-            await interaction.followup.send("Not for you 😤", ephemeral=True)
+            await interaction.response.send_message("Not for you 😤", ephemeral=True)
+            return
+
+        ok = await safe_defer(interaction, thinking=True)
+        if not ok:
             return
 
         tags = build_tags(SUCC_BASE, SUCC_POSITIVE_SETS)
@@ -771,7 +728,7 @@ class SuccBackView(discord.ui.View):
         self.count += 1
         await STATS_DB.record_action("succ", interaction.user.id, self.original_actor.id, is_back=True)
 
-        line = random.choice(SUCC_LINES_INTIMATE).format(actor=interaction.user.mention, target=self.original_actor.mention)
+        line = random.choice(SUCC_LINES).format(actor=interaction.user.mention, target=self.original_actor.mention)
         summary = succ_summary(interaction.user, self.original_actor, self.count)
 
         full_embed = discord.Embed(
@@ -782,6 +739,7 @@ class SuccBackView(discord.ui.View):
         full_embed.set_image(url="attachment://action.jpg")
 
         button.label = f"Succ’d ({self.count})"
+
         try:
             await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             self.message = interaction.message
@@ -797,15 +755,14 @@ class SuccBackView(discord.ui.View):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def plap(interaction: discord.Interaction, target: discord.User):
-    # ACK FIRST (avoid 10062)
-    ok = await safe_defer(interaction, thinking=True)
-    if not ok:
-        return
-
     log.info("[CMD] /plap actor=%s target=%s", interaction.user.id, target.id)
 
     if target.id == interaction.user.id:
-        await interaction.followup.send("Not yourself 😅", ephemeral=True)
+        await interaction.response.send_message("Not yourself 😅", ephemeral=True)
+        return
+
+    ok = await safe_defer(interaction, thinking=True)
+    if not ok:
         return
 
     view = PlapBackView(interaction.user, target)
@@ -825,7 +782,7 @@ async def plap(interaction: discord.Interaction, target: discord.User):
     view.seen.add(md5)
     await STATS_DB.record_action("plap", interaction.user.id, target.id, is_back=False)
 
-    line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=interaction.user.mention, target=target.mention)
+    line = random.choice(PLAP_LINES).format(actor=interaction.user.mention, target=target.mention)
     summary = plap_summary(interaction.user, target, 1)
 
     embed = discord.Embed(
@@ -845,15 +802,14 @@ async def plap(interaction: discord.Interaction, target: discord.User):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def succ(interaction: discord.Interaction, target: discord.User):
-    # ACK FIRST (avoid 10062)
-    ok = await safe_defer(interaction, thinking=True)
-    if not ok:
-        return
-
     log.info("[CMD] /succ actor=%s target=%s", interaction.user.id, target.id)
 
     if target.id == interaction.user.id:
-        await interaction.followup.send("Not yourself 😅", ephemeral=True)
+        await interaction.response.send_message("Not yourself 😅", ephemeral=True)
+        return
+
+    ok = await safe_defer(interaction, thinking=True)
+    if not ok:
         return
 
     view = SuccBackView(interaction.user, target)
@@ -873,7 +829,7 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     view.seen.add(md5)
     await STATS_DB.record_action("succ", interaction.user.id, target.id, is_back=False)
 
-    line = random.choice(SUCC_LINES_INTIMATE).format(actor=interaction.user.mention, target=target.mention)
+    line = random.choice(SUCC_LINES).format(actor=interaction.user.mention, target=target.mention)
     summary = succ_summary(interaction.user, target, 1)
 
     embed = discord.Embed(
@@ -888,12 +844,14 @@ async def succ(interaction: discord.Interaction, target: discord.User):
 
 # =========================
 # /stats (DM ONLY) - COMBINED
-# FIXED: defer first + followup (prevents 10062)
+# IMPORTANT: use followup after defer to avoid 10062 on response.send_message
 # =========================
 @bot.tree.command(name="stats", description="View plap + succ stats (DM only)")
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def stats(interaction: discord.Interaction, user: discord.User | None = None):
+    log.info("[CMD] /stats actor=%s", interaction.user.id)
+
     ok = await safe_defer(interaction, thinking=False)
     if not ok:
         return
@@ -918,6 +876,7 @@ async def stats(interaction: discord.Interaction, user: discord.User | None = No
         color=discord.Color.blurple(),
     )
     embed.set_author(name=user.display_name, icon_url=user.display_avatar.url)
+
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 # =========================
@@ -925,9 +884,32 @@ async def stats(interaction: discord.Interaction, user: discord.User | None = No
 # =========================
 @bot.event
 async def on_ready():
+    global HTTP
+    if HTTP is None or HTTP.closed:
+        HTTP = aiohttp.ClientSession(headers={"User-Agent": USER_AGENT})
+
     await bot.tree.sync()  # global sync for DMs
+
     log.info("Logged in as %s", bot.user)
     log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
+    log.info("DB_PATH=%s", DB_PATH)
+    log.info("Rule34 enabled=%s", RULE34_ENABLED)
+    log.info("Gelbooru enabled=%s", GELBOORU_ENABLED)
 
-if __name__ == "__main__":
-    bot.run(TOKEN)
+@bot.event
+async def on_disconnect():
+    log.warning("Disconnected from Discord gateway.")
+
+@bot.event
+async def on_resumed():
+    log.info("Gateway session resumed.")
+
+async def _shutdown():
+    global HTTP
+    if HTTP and not HTTP.closed:
+        await HTTP.close()
+
+# =========================
+# RUN
+# =========================
+bot.run(TOKEN)
