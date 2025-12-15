@@ -41,7 +41,7 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
-# PLAP LINES (SEPARATE)
+# PLAP LINES
 # =========================
 PLAP_LINES_INTIMATE_NATURAL = [
     "😶 {actor} plaps {target} and stays close, letting the moment linger.",
@@ -67,7 +67,7 @@ PLAP_LINES_INTIMATE_NATURAL = [
 ]
 
 # =========================
-# SUCC LINES (SEPARATE)
+# SUCC LINES
 # =========================
 SUCC_LINES_INTIMATE = [
     "😳 {actor} succs {target}, slow at first, like they’re testing the reaction.",
@@ -83,7 +83,7 @@ SUCC_LINES_INTIMATE = [
 ]
 
 # =========================
-# ESCALATING SUMMARY LINES (SEPARATE)
+# ESCALATING SUMMARY LINES
 # =========================
 def plap_summary(actor: discord.User, target: discord.User, count: int) -> str:
     time_word = "time" if count == 1 else "times"
@@ -329,8 +329,10 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
 # =========================
 # PLAP BACK VIEW
-# NOTE: Your discord.py build can't replace attachments via Message.edit(files=...),
-# so we edit the embed/count on the SAME message, and send the new image as a new message.
+# IMPORTANT: your discord.py build can't edit attachments with Message.edit(files=...).
+# So we:
+# 1) Edit the original message to update the button label (count)
+# 2) Send a NEW message that contains the FULL embed (text+count) + the NEW spoiler image
 # =========================
 class PlapBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -378,31 +380,35 @@ class PlapBackView(discord.ui.View):
         )
         summary = plap_summary(interaction.user, self.original_actor, self.count)
 
-        embed = discord.Embed(
+        # This is the FULL embed you want (text + count + image)
+        full_embed = discord.Embed(
             description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(173, 216, 230),
         )
-        embed.set_author(
+        full_embed.set_author(
             name=f"{interaction.user.display_name} plaps back",
             icon_url=interaction.user.display_avatar.url,
         )
+        full_embed.set_image(url="attachment://action.jpg")
 
+        # Update the button label on the original message so the counter is visible there too
         button.label = f"Plapped ({self.count})"
         button.disabled = False
 
-        # Edit the SAME message (no file replace here)
-        await interaction.followup.edit_message(
-            message_id=interaction.message.id,
-            embed=embed,
-            view=self,
-        )
+        # Edit original message (no new file)
+        try:
+            await interaction.followup.edit_message(
+                message_id=interaction.message.id,
+                view=self,
+            )
+        except Exception:
+            pass
 
-        # Send new image separately
-        await interaction.followup.send(file=file)
+        # Send the FULL embed + NEW spoiler image as a NEW message
+        await interaction.followup.send(embed=full_embed, file=file)
 
 # =========================
-# SUCC BACK VIEW
-# Same behavior as above.
+# SUCC BACK VIEW (same logic)
 # =========================
 class SuccBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -450,25 +456,28 @@ class SuccBackView(discord.ui.View):
         )
         summary = succ_summary(interaction.user, self.original_actor, self.count)
 
-        embed = discord.Embed(
+        full_embed = discord.Embed(
             description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(255, 105, 180),
         )
-        embed.set_author(
+        full_embed.set_author(
             name=f"{interaction.user.display_name} succs back",
             icon_url=interaction.user.display_avatar.url,
         )
+        full_embed.set_image(url="attachment://action.jpg")
 
         button.label = f"Succ’d ({self.count})"
         button.disabled = False
 
-        await interaction.followup.edit_message(
-            message_id=interaction.message.id,
-            embed=embed,
-            view=self,
-        )
+        try:
+            await interaction.followup.edit_message(
+                message_id=interaction.message.id,
+                view=self,
+            )
+        except Exception:
+            pass
 
-        await interaction.followup.send(file=file)
+        await interaction.followup.send(embed=full_embed, file=file)
 
 # =========================
 # /plap (DM ONLY)
