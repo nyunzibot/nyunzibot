@@ -41,6 +41,10 @@ GELBOORU_USER_ID = "1873378"
 # (kept your intent/structure)
 DB_PATH = "/data/stats.sqlite3" or "stats.sqlite3"
 
+# Put this on a Railway Volume for persistence, e.g. /data/stats.sqlite3
+# Prefer env override:
+DB_PATH = os.getenv("DB_PATH", "/data/stats.sqlite3")
+
 # =========================
 # SCORE FALLBACK TIERS
 # =========================
@@ -59,10 +63,11 @@ PLAP_TAGS = "futa_on_female sex_from_behind -video -gif -loli -shota -young -und
 SUCC_TAGS = "futa_on_female oral -video -gif -loli -shota -young -underage -child -minor -kid -furry -anthro -feral -animal -bestiality -rape -raped -nonconsensual -forced -dubious_consent -incest -family -gore -blood -death -scat -watersports -vomit -diaper -inflation -vore -oviposition -egg -pregnant -birth -lactation"
 
 
+
 if not TOKEN:
-    logging.warning("TOKEN is missing! The bot will not be able to log in.")
+    logging.warning("TOKEN missing! Bot cannot log in.")
 if not RULE34_API_KEY or not RULE34_USER_ID:
-    logging.warning("RULE34_API_KEY or RULE34_USER_ID missing! Rule34 image fetching will fail.")
+    logging.warning("RULE34_API_KEY or RULE34_USER_ID missing! Rule34 fetching will fail.")
 if not GELBOORU_API_KEY or not GELBOORU_USER_ID:
     logging.warning("GELBOORU_API_KEY or GELBOORU_USER_ID missing! Gelbooru fetching will be skipped.")
 
@@ -73,7 +78,21 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
-# PLAP LINES (SEPARATE)
+# SAFE DEFER (prevents 10062 spam)
+# =========================
+async def safe_defer(interaction: discord.Interaction, *, thinking: bool = True) -> bool:
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.defer(thinking=thinking)
+        return True
+    except discord.NotFound:
+        # Interaction expired
+        return False
+    except Exception:
+        return False
+
+# =========================
+# PLAP LINES
 # =========================
 PLAP_LINES_INTIMATE_NATURAL = [
     "😶 {actor} plaps {target} and stays close, letting the moment linger.",
@@ -99,7 +118,7 @@ PLAP_LINES_INTIMATE_NATURAL = [
 ]
 
 # =========================
-# SUCC LINES (SEPARATE)
+# SUCC LINES
 # =========================
 SUCC_LINES_INTIMATE = [
     "😳 {actor} succs {target}, slow at first, like they’re testing the reaction.",
@@ -115,7 +134,7 @@ SUCC_LINES_INTIMATE = [
 ]
 
 # =========================
-# ESCALATING SUMMARY LINES (SEPARATE)
+# ESCALATING SUMMARY LINES
 # =========================
 def plap_summary(actor: discord.User, target: discord.User, count: int) -> str:
     time_word = "time" if count == 1 else "times"
@@ -200,11 +219,13 @@ class StatsDB:
         return conn
 
     def _init_db(self):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True) if os.path.dirname(self.path) else None
+        dirn = os.path.dirname(self.path)
+        if dirn:
+            os.makedirs(dirn, exist_ok=True)
         with self._connect() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS stats (
-                    action TEXT NOT NULL,            -- 'plap' or 'succ'
+                    action TEXT NOT NULL,
                     user_id TEXT NOT NULL,
                     given INTEGER NOT NULL DEFAULT 0,
                     received INTEGER NOT NULL DEFAULT 0,
@@ -268,10 +289,8 @@ STATS_DB = StatsDB(DB_PATH)
 
 # =========================
 # PER-SITE PID TUNING
-# (stricter tiers -> smaller pid range -> fewer empty pages)
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
-    # You can tweak these anytime
     if site == "gelbooru":
         if score_tag == "score:>50":
             return 20
@@ -281,7 +300,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
             return 45
         if score_tag == "score:>20":
             return 70
-        return 140  # no-score tier: broad results
+        return 140
     else:  # rule34
         if score_tag == "score:>50":
             return 25
@@ -291,11 +310,11 @@ def pid_max_for(site: str, score_tag: str) -> int:
             return 60
         if score_tag == "score:>20":
             return 90
-        return 180  # no-score tier: very broad
+        return 180
 
 # =========================
 # GELBOORU FETCH (JSON)
-# Lowers score on: timeouts, 429s, parse errors, temp network issues, 0 posts
+# Lowers score on: timeouts, 429s, parse errors, temp network, empty
 # =========================
 async def fetch_image_gelbooru(tags: str, max_attempts: int = 5) -> str | None:
     if not GELBOORU_API_KEY or not GELBOORU_USER_ID:
@@ -304,11 +323,11 @@ async def fetch_image_gelbooru(tags: str, max_attempts: int = 5) -> str | None:
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
     for score_tag in SCORE_TIERS:
-        full_tags = f"{tags} {score_tag}".strip()
         tier_label = score_tag or "no-score"
+        full_tags = f"{tags} {score_tag}".strip()
         pid_max = pid_max_for("gelbooru", score_tag)
 
-        print(f"[GEL FETCH] Trying tier='{tier_label}' pid_max={pid_max} tags='{full_tags}'")
+        print(f"[GEL FETCH] tier='{tier_label}' pid_max={pid_max} tags='{full_tags}'")
 
         for attempt in range(1, max_attempts + 1):
             params = {
@@ -360,32 +379,31 @@ async def fetch_image_gelbooru(tags: str, max_attempts: int = 5) -> str | None:
 
             valid = [p for p in posts if isinstance(p, dict) and p.get("file_url")]
             if not valid:
-                print(f"[GEL FETCH] tier={tier_label} no file_url posts (lowering score)")
+                print(f"[GEL FETCH] tier={tier_label} no file_url (lowering score)")
                 break
 
             return random.choice(valid).get("file_url")
 
-        print(f"[GEL FETCH] Dropping from tier '{tier_label}' → next tier")
+        print(f"[GEL FETCH] drop tier '{tier_label}' -> next tier")
 
     return None
 
 # =========================
 # RULE34 FETCH (XML)
-# Lowers score on: timeouts, 429s, parse errors, temp network issues, 0 posts
+# Lowers score on: timeouts, 429s, parse errors, temp network, empty
 # =========================
 async def fetch_image_rule34(tags: str, max_attempts: int = 5) -> str | None:
-    backoffs = [0.0, 1.0, 2.5, 5.0]
-
     if not RULE34_API_KEY or not RULE34_USER_ID:
-        print("[R34 FETCH] Missing RULE34_API_KEY or RULE34_USER_ID env vars.")
         return None
 
+    backoffs = [0.0, 1.0, 2.5, 5.0]
+
     for score_tag in SCORE_TIERS:
-        full_tags = f"{tags} {score_tag}".strip()
         tier_label = score_tag or "no-score"
+        full_tags = f"{tags} {score_tag}".strip()
         pid_max = pid_max_for("rule34", score_tag)
 
-        print(f"[R34 FETCH] Trying tier='{tier_label}' pid_max={pid_max} tags='{full_tags}'")
+        print(f"[R34 FETCH] tier='{tier_label}' pid_max={pid_max} tags='{full_tags}'")
 
         for attempt in range(1, max_attempts + 1):
             params = {
@@ -399,11 +417,11 @@ async def fetch_image_rule34(tags: str, max_attempts: int = 5) -> str | None:
             try:
                 async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
                     async with session.get(
-                        BOORU_API,
+                        RULE34_API,
                         params=params,
                         timeout=aiohttp.ClientTimeout(total=20),
                     ) as resp:
-                        print(f"[R34 FETCH] tier={tier_label} attempt={attempt}/{max_attempts} status={resp.status} url={resp.url}")
+                        print(f"[R34 FETCH] tier={tier_label} attempt={attempt}/{max_attempts} status={resp.status}")
 
                         if resp.status == 429:
                             await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
@@ -433,18 +451,17 @@ async def fetch_image_rule34(tags: str, max_attempts: int = 5) -> str | None:
 
             valid_posts = [p for p in posts if p.attrib.get("file_url")]
             if not valid_posts:
-                print(f"[R34 FETCH] tier={tier_label} no file_url posts (lowering score)")
+                print(f"[R34 FETCH] tier={tier_label} no file_url (lowering score)")
                 break
 
-            post = random.choice(valid_posts)
-            return post.attrib.get("file_url")
+            return random.choice(valid_posts).attrib.get("file_url")
 
-        print(f"[R34 FETCH] Dropping from tier '{tier_label}' → next tier")
+        print(f"[R34 FETCH] drop tier '{tier_label}' -> next tier")
 
     return None
 
 # =========================
-# WRAPPER: Gelbooru -> fallback to Rule34
+# WRAPPER: Gelbooru -> Rule34
 # =========================
 async def fetch_image(tags: str, max_attempts: int = 5) -> str | None:
     url = await fetch_image_gelbooru(tags, max_attempts=max_attempts)
@@ -453,7 +470,7 @@ async def fetch_image(tags: str, max_attempts: int = 5) -> str | None:
     return await fetch_image_rule34(tags, max_attempts=max_attempts)
 
 # =========================
-# IMAGE DOWNLOAD + CONVERT (SPOILER)
+# IMAGE DOWNLOAD + PIL CONVERT (OFF EVENT LOOP)
 # =========================
 async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
     if not url:
@@ -461,35 +478,9 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
-    for attempt in range(1, max_attempts + 1):
+    def pil_work(raw_bytes: bytes) -> discord.File | None:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    print(f"[IMG FETCH] attempt={attempt}/{max_attempts} status={resp.status} url={resp.url}")
-
-                    if resp.status == 429:
-                        wait = backoffs[min(attempt, len(backoffs) - 1)]
-                        await asyncio.sleep(wait)
-                        continue
-
-                    if resp.status != 200:
-                        wait = backoffs[min(attempt, len(backoffs) - 1)]
-                        await asyncio.sleep(wait)
-                        continue
-
-                    raw = await resp.read()
-
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            wait = backoffs[min(attempt, len(backoffs) - 1)]
-            print(f"[IMG FETCH] exception={type(e).__name__}: {e} — sleeping {wait}s")
-            await asyncio.sleep(wait)
-            continue
-
-        if len(raw) > 24_000_000:
-            return None
-
-        try:
-            image = Image.open(io.BytesIO(raw)).convert("RGB")
+            image = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
             image.thumbnail((2048, 2048))
 
             buf = io.BytesIO()
@@ -504,10 +495,38 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
             print(f"[IMG PROCESS] PIL error: {type(e).__name__}: {e}")
             return None
 
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    print(f"[IMG FETCH] attempt={attempt}/{max_attempts} status={resp.status}")
+
+                    if resp.status == 429:
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+
+                    if resp.status != 200:
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+
+                    raw = await resp.read()
+
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            wait = backoffs[min(attempt, len(backoffs) - 1)]
+            print(f"[IMG FETCH] exception={type(e).__name__}: {e} — sleeping {wait}s")
+            await asyncio.sleep(wait)
+            continue
+
+        if len(raw) > 24_000_000:
+            return None
+
+        return await asyncio.to_thread(pil_work, raw)
+
     return None
 
 # =========================
 # PLAP BACK VIEW
+# (updates button label on original msg, sends new embed+image)
 # =========================
 class PlapBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -534,7 +553,9 @@ class PlapBackView(discord.ui.View):
             await interaction.response.send_message("Not for you 😤", ephemeral=True)
             return
 
-        await interaction.response.defer(thinking=True)
+        ok = await safe_defer(interaction, thinking=True)
+        if not ok:
+            return
 
         image_url = await fetch_image(PLAP_TAGS, max_attempts=5)
         if not image_url:
@@ -566,13 +587,10 @@ class PlapBackView(discord.ui.View):
         full_embed.set_image(url="attachment://action.jpg")
 
         button.label = f"Plapped ({self.count})"
-        button.disabled = False
 
+        # Update the original message's view/label (no attachments edit)
         try:
-            await interaction.followup.edit_message(
-                message_id=interaction.message.id,
-                view=self,
-            )
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             self.message = interaction.message
         except Exception:
             pass
@@ -607,7 +625,9 @@ class SuccBackView(discord.ui.View):
             await interaction.response.send_message("Not for you 😤", ephemeral=True)
             return
 
-        await interaction.response.defer(thinking=True)
+        ok = await safe_defer(interaction, thinking=True)
+        if not ok:
+            return
 
         image_url = await fetch_image(SUCC_TAGS, max_attempts=5)
         if not image_url:
@@ -639,13 +659,9 @@ class SuccBackView(discord.ui.View):
         full_embed.set_image(url="attachment://action.jpg")
 
         button.label = f"Succ’d ({self.count})"
-        button.disabled = False
 
         try:
-            await interaction.followup.edit_message(
-                message_id=interaction.message.id,
-                view=self,
-            )
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             self.message = interaction.message
         except Exception:
             pass
@@ -663,7 +679,9 @@ async def plap(interaction: discord.Interaction, target: discord.User):
         await interaction.response.send_message("Not yourself 😅", ephemeral=True)
         return
 
-    await interaction.response.defer(thinking=True)
+    ok = await safe_defer(interaction, thinking=True)
+    if not ok:
+        return
 
     image_url = await fetch_image(PLAP_TAGS, max_attempts=5)
     if not image_url:
@@ -708,7 +726,9 @@ async def succ(interaction: discord.Interaction, target: discord.User):
         await interaction.response.send_message("Not yourself 😅", ephemeral=True)
         return
 
-    await interaction.response.defer(thinking=True)
+    ok = await safe_defer(interaction, thinking=True)
+    if not ok:
+        return
 
     image_url = await fetch_image(SUCC_TAGS, max_attempts=5)
     if not image_url:
