@@ -838,6 +838,7 @@ class SuccBackView(discord.ui.View):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def plap(interaction: discord.Interaction, target: discord.User):
+    log.info("[CMD] /plap received interaction_id=%s user=%s target=%s", interaction.id, interaction.user.id, target.id)
     ok = await safe_defer(interaction, thinking=True)
     if not ok:
         return
