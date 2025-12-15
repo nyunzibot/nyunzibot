@@ -12,9 +12,6 @@ from discord.ext import commands
 from discord import app_commands
 from PIL import Image
 
-# =========================
-# LOGGING (Railway-friendly)
-# =========================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -23,16 +20,6 @@ logging.basicConfig(
 log = logging.getLogger("nyunzi")
 log.info("Process boot ✅")
 
-# =========================
-# SECRETS (USE ENV VARS IN RAILWAY)
-# Railway Variables (recommended):
-# TOKEN
-# RULE34_API_KEY
-# RULE34_USER_ID
-# GELBOORU_API_KEY
-# GELBOORU_USER_ID
-# DB_PATH (optional)
-# =========================
 TOKEN = "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg"
 
 # Rule34 (XML)
@@ -81,12 +68,6 @@ DEDUP_PULL_TRIES = 6
 
 # =========================
 # TAGS
-# - Base tags define the "action"
-# - Positive sets rotate to improve quality/diversity
-# - Negatives reduce bad content
-#
-# NOTE: Your “not explicit” request conflicts with adult booru tags.
-# Keep/adjust these to what you want.
 # =========================
 NEGATIVE_TAGS = (
     "-video -gif "
@@ -100,11 +81,9 @@ NEGATIVE_TAGS = (
     "-pregnant -birth -lactation"
 )
 
-# Base tags (edit freely)
 PLAP_BASE = "futa_on_female sex_from_behind"
 SUCC_BASE = "futa_on_female oral"
 
-# Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
     "1girl 1futa consensual",
     "highres masterpiece",
@@ -126,7 +105,6 @@ SUCC_POSITIVE_SETS = [
 ]
 
 def build_tags(base: str, positives: list[str]) -> str:
-    # pick 1–2 positives to keep queries effective but not too strict
     k = 2 if len(positives) >= 2 else 1
     p = random.sample(positives, k=k)
     return f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
@@ -138,13 +116,23 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
-# ADDITION: REUSE ONE HTTP SESSION (reduces latency + helps avoid 10062)
+# REUSE ONE HTTP SESSION
 # =========================
 HTTP: aiohttp.ClientSession | None = None
+_HTTP_WARNED = False
+
+def http_ready(context: str) -> bool:
+    """Ensure HTTP exists; if not, log once so it doesn't silently skip."""
+    global _HTTP_WARNED
+    if HTTP is None or HTTP.closed:
+        if not _HTTP_WARNED:
+            log.warning("[HTTP] session not ready in %s (HTTP is None/closed) — fetch logs will be missing until ready", context)
+            _HTTP_WARNED = True
+        return False
+    return True
 
 # =========================
 # SAFE INTERACTION ACK (prevents 10062)
-# IMPORTANT: call this as the FIRST awaited line in every command/callback
 # =========================
 _LAST_10062 = 0.0
 
@@ -155,7 +143,6 @@ async def safe_defer(interaction: discord.Interaction, *, thinking: bool = True)
             await interaction.response.defer(thinking=thinking)
         return True
     except discord.NotFound:
-        # throttle spam
         now = time.time()
         if now - _LAST_10062 > 5:
             log.warning("[DEFER] Unknown interaction (10062) – clicked too late or network hiccup")
@@ -398,17 +385,16 @@ class InteractionSeen:
         return bool(md5) and md5 in self.md5s
 
 # =========================
-# PID TUNING (BIGGER = fewer repeats)
+# PID TUNING
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
-    # IMPORTANT: high score => fewer pages => repeats. So widen pid a lot.
     if site == "gelbooru":
         if score_tag == "score:>50": return 800
         if score_tag == "score:>40": return 1200
         if score_tag == "score:>30": return 1800
         if score_tag == "score:>20": return 2500
         return 3500
-    else:  # rule34
+    else:
         if score_tag == "score:>50": return 900
         if score_tag == "score:>40": return 1400
         if score_tag == "score:>30": return 2200
@@ -416,7 +402,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
         return 4500
 
 # =========================
-# GELBOORU FETCH (JSON) -> (url, md5, site)
+# GELBOORU FETCH (JSON)
 # =========================
 async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
@@ -445,9 +431,9 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                 }
 
                 try:
-                    # CHANGE: reuse shared session
-                    if HTTP is None:
+                    if not http_ready("fetch_image_gelbooru"):
                         return None
+
                     async with HTTP.get(
                         GELBOORU_API,
                         params=params,
@@ -505,7 +491,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
     return None
 
 # =========================
-# RULE34 FETCH (XML) -> (url, md5, site)
+# RULE34 FETCH (XML)
 # =========================
 async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (RULE34_API_KEY and RULE34_USER_ID):
@@ -533,9 +519,9 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                 }
 
                 try:
-                    # CHANGE: reuse shared session
-                    if HTTP is None:
+                    if not http_ready("fetch_image_rule34"):
                         return None
+
                     async with HTTP.get(
                         RULE34_API,
                         params=params,
@@ -623,9 +609,9 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
     for attempt in range(1, max_attempts + 1):
         try:
-            # CHANGE: reuse shared session
-            if HTTP is None:
+            if not http_ready("process_image"):
                 return None
+
             async with HTTP.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
 
@@ -814,7 +800,6 @@ class SuccBackView(discord.ui.View):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def plap(interaction: discord.Interaction, target: discord.User):
-    # ACK FIRST (avoid 10062)
     ok = await safe_defer(interaction, thinking=True)
     if not ok:
         return
@@ -862,7 +847,6 @@ async def plap(interaction: discord.Interaction, target: discord.User):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def succ(interaction: discord.Interaction, target: discord.User):
-    # ACK FIRST (avoid 10062)
     ok = await safe_defer(interaction, thinking=True)
     if not ok:
         return
@@ -904,8 +888,7 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     view.message = msg
 
 # =========================
-# /stats (DM ONLY) - COMBINED
-# FIXED: defer first + followup (prevents 10062)
+# /stats (DM ONLY)
 # =========================
 @bot.tree.command(name="stats", description="View plap + succ stats (DM only)")
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
@@ -945,7 +928,8 @@ async def on_ready():
     global HTTP
     if HTTP is None or HTTP.closed:
         HTTP = aiohttp.ClientSession(headers={"User-Agent": USER_AGENT})
-    await bot.tree.sync()  # global sync for DMs
+        log.info("[HTTP] session created ✅")
+    await bot.tree.sync()
     log.info("Logged in as %s", bot.user)
     log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
 
