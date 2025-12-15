@@ -2,6 +2,7 @@ import random
 import aiohttp
 import io
 import logging
+import sys
 import os
 import asyncio
 import sqlite3
@@ -12,6 +13,9 @@ from discord.ext import commands
 from discord import app_commands
 from PIL import Image
 
+# =========================
+# LOGGING (Railway-friendly)
+# =========================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -20,6 +24,23 @@ logging.basicConfig(
 log = logging.getLogger("nyunzi")
 log.info("Process boot ✅")
 
+# Ensure logs flush immediately on Railway
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
+# =========================
+# SECRETS (USE ENV VARS IN RAILWAY)
+# Railway Variables (recommended):
+# TOKEN
+# RULE34_API_KEY
+# RULE34_USER_ID
+# GELBOORU_API_KEY
+# GELBOORU_USER_ID
+# DB_PATH (optional)
+# =========================
 TOKEN = "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg"
 
 # Rule34 (XML)
@@ -44,11 +65,11 @@ log.info("DB_PATH=%s", DB_PATH)
 log.info("Rule34 enabled=%s", bool(RULE34_API_KEY and RULE34_USER_ID))
 log.info("Gelbooru enabled=%s", bool(GELBOORU_API_KEY and GELBOORU_USER_ID))
 
-if not TOKEN:
+if not TOKEN or TOKEN == "<REDACTED>":
     log.warning("TOKEN missing! Bot cannot log in (set Railway variable TOKEN).")
-if not (RULE34_API_KEY and RULE34_USER_ID):
+if not (RULE34_API_KEY and RULE34_USER_ID) or RULE34_API_KEY == "<REDACTED>":
     log.warning("RULE34_API_KEY or RULE34_USER_ID missing! Rule34 fetching will be skipped.")
-if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
+if not (GELBOORU_API_KEY and GELBOORU_USER_ID) or GELBOORU_API_KEY == "<REDACTED>":
     log.warning("GELBOORU_API_KEY or GELBOORU_USER_ID missing! Gelbooru fetching will be skipped.")
 
 # =========================
@@ -81,9 +102,11 @@ NEGATIVE_TAGS = (
     "-pregnant -birth -lactation"
 )
 
+# Base tags (edit freely)
 PLAP_BASE = "futa_on_female sex_from_behind"
 SUCC_BASE = "futa_on_female oral"
 
+# Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
     "1girl 1futa consensual",
     "highres masterpiece",
@@ -105,6 +128,7 @@ SUCC_POSITIVE_SETS = [
 ]
 
 def build_tags(base: str, positives: list[str]) -> str:
+    # pick 1–2 positives to keep queries effective but not too strict
     k = 2 if len(positives) >= 2 else 1
     p = random.sample(positives, k=k)
     return f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
@@ -385,7 +409,7 @@ class InteractionSeen:
         return bool(md5) and md5 in self.md5s
 
 # =========================
-# PID TUNING
+# PID TUNING (BIGGER = fewer repeats)
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
     if site == "gelbooru":
@@ -394,7 +418,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
         if score_tag == "score:>30": return 1800
         if score_tag == "score:>20": return 2500
         return 3500
-    else:
+    else:  # rule34
         if score_tag == "score:>50": return 900
         if score_tag == "score:>40": return 1400
         if score_tag == "score:>30": return 2200
@@ -402,10 +426,10 @@ def pid_max_for(site: str, score_tag: str) -> int:
         return 4500
 
 # =========================
-# GELBOORU FETCH (JSON)
+# GELBOORU FETCH (JSON) -> (url, md5, site)
 # =========================
 async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
-    if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
+    if not (GELBOORU_API_KEY and GELBOORU_USER_ID) or GELBOORU_API_KEY == "<REDACTED>":
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -491,10 +515,10 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
     return None
 
 # =========================
-# RULE34 FETCH (XML)
+# RULE34 FETCH (XML) -> (url, md5, site)
 # =========================
 async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
-    if not (RULE34_API_KEY and RULE34_USER_ID):
+    if not (RULE34_API_KEY and RULE34_USER_ID) or RULE34_API_KEY == "<REDACTED>":
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -576,10 +600,17 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 # WRAPPER: Gelbooru -> Rule34
 # =========================
 async def fetch_image(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+    log.info("[FETCH] start tags=%r avoid_md5s=%s", tags, len(avoid_md5s))
     res = await fetch_image_gelbooru(tags, avoid_md5s)
     if res:
+        log.info("[FETCH] picked site=%s", res[2])
         return res
-    return await fetch_image_rule34(tags, avoid_md5s)
+    res = await fetch_image_rule34(tags, avoid_md5s)
+    if res:
+        log.info("[FETCH] picked site=%s", res[2])
+    else:
+        log.warning("[FETCH] no result from any source")
+    return res
 
 # =========================
 # IMAGE DOWNLOAD + PIL CONVERT (OFF LOOP)
@@ -641,8 +672,10 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 # PICK IMAGE: dynamic tags + dedup (interaction + persistent)
 # =========================
 async def pick_image(tags: str, interaction_seen: InteractionSeen) -> tuple[str, str | None, str] | None:
+    log.info("[PICK] tags=%r", tags)
     recent_seen = await STATS_DB.load_recent_seen(max_age_days=30)
     avoid = set(recent_seen) | set(interaction_seen.md5s)
+    log.info("[PICK] avoid_md5s=%s (recent=%s interaction=%s)", len(avoid), len(recent_seen), len(interaction_seen.md5s))
 
     picked = None
     for _ in range(DEDUP_PULL_TRIES):
@@ -657,6 +690,11 @@ async def pick_image(tags: str, interaction_seen: InteractionSeen) -> tuple[str,
 
     if picked and picked[1]:
         await STATS_DB.mark_seen(picked[1], picked[2])
+        log.info("[PICK] selected site=%s md5=%s", picked[2], picked[1])
+    elif picked:
+        log.info("[PICK] selected site=%s (no md5)", picked[2])
+    else:
+        log.warning("[PICK] no post matched (tags too strict or API limited)")
 
     return picked
 
@@ -929,17 +967,10 @@ async def on_ready():
     if HTTP is None or HTTP.closed:
         HTTP = aiohttp.ClientSession(headers={"User-Agent": USER_AGENT})
         log.info("[HTTP] session created ✅")
+
     await bot.tree.sync()
     log.info("Logged in as %s", bot.user)
     log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
-
-@bot.event
-async def on_disconnect():
-    log.warning("Disconnected from Discord gateway.")
-
-@bot.event
-async def on_resumed():
-    log.info("Gateway session resumed.")
 
 if __name__ == "__main__":
     bot.run(TOKEN)
