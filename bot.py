@@ -49,7 +49,7 @@ DB_PATH = os.getenv("DB_PATH", "/data/stats.sqlite3")
 # SCORE FALLBACK TIERS
 # =========================
 SCORE_TIERS = [
-    "score:>50",
+    "score:>100",
     "score:>40",
     "score:>30",
     "score:>20",
@@ -292,7 +292,7 @@ STATS_DB = StatsDB(DB_PATH)
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
     if site == "gelbooru":
-        if score_tag == "score:>50":
+        if score_tag == "score:>100":
             return 20
         if score_tag == "score:>40":
             return 30
@@ -302,7 +302,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
             return 70
         return 140
     else:  # rule34
-        if score_tag == "score:>50":
+        if score_tag == "score:>100":
             return 25
         if score_tag == "score:>40":
             return 40
