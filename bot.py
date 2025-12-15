@@ -138,16 +138,28 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
+# ADDITION: REUSE ONE HTTP SESSION (reduces latency + helps avoid 10062)
+# =========================
+HTTP: aiohttp.ClientSession | None = None
+
+# =========================
 # SAFE INTERACTION ACK (prevents 10062)
 # IMPORTANT: call this as the FIRST awaited line in every command/callback
 # =========================
+_LAST_10062 = 0.0
+
 async def safe_defer(interaction: discord.Interaction, *, thinking: bool = True) -> bool:
+    global _LAST_10062
     try:
         if not interaction.response.is_done():
             await interaction.response.defer(thinking=thinking)
         return True
     except discord.NotFound:
-        log.warning("[DEFER] Unknown interaction (10062) – clicked too late or network hiccup")
+        # throttle spam
+        now = time.time()
+        if now - _LAST_10062 > 5:
+            log.warning("[DEFER] Unknown interaction (10062) – clicked too late or network hiccup")
+            _LAST_10062 = now
         return False
     except Exception as e:
         log.warning("[DEFER] failed: %s: %s", type(e).__name__, e)
@@ -433,22 +445,24 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                 }
 
                 try:
-                    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
-                        async with session.get(
-                            GELBOORU_API,
-                            params=params,
-                            timeout=aiohttp.ClientTimeout(total=20),
-                        ) as resp:
-                            http_status = resp.status
-                            log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                    # CHANGE: reuse shared session
+                    if HTTP is None:
+                        return None
+                    async with HTTP.get(
+                        GELBOORU_API,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        http_status = resp.status
+                        log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
-                            if http_status == 429:
-                                await asyncio.sleep(backoffs[1])
-                                break
-                            if http_status != 200:
-                                break
+                        if http_status == 429:
+                            await asyncio.sleep(backoffs[1])
+                            break
+                        if http_status != 200:
+                            break
 
-                            data = await resp.json(content_type=None)
+                        data = await resp.json(content_type=None)
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     exc = e
@@ -519,22 +533,24 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                 }
 
                 try:
-                    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
-                        async with session.get(
-                            RULE34_API,
-                            params=params,
-                            timeout=aiohttp.ClientTimeout(total=20),
-                        ) as resp:
-                            http_status = resp.status
-                            log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                    # CHANGE: reuse shared session
+                    if HTTP is None:
+                        return None
+                    async with HTTP.get(
+                        RULE34_API,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        http_status = resp.status
+                        log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
-                            if http_status == 429:
-                                await asyncio.sleep(backoffs[1])
-                                break
-                            if http_status != 200:
-                                break
+                        if http_status == 429:
+                            await asyncio.sleep(backoffs[1])
+                            break
+                        if http_status != 200:
+                            break
 
-                            xml = await resp.text()
+                        xml = await resp.text()
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     exc = e
@@ -607,18 +623,20 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
     for attempt in range(1, max_attempts + 1):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
+            # CHANGE: reuse shared session
+            if HTTP is None:
+                return None
+            async with HTTP.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
 
-                    if resp.status == 429:
-                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                        continue
-                    if resp.status != 200:
-                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                        continue
+                if resp.status == 429:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+                if resp.status != 200:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
 
-                    raw = await resp.read()
+                raw = await resp.read()
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             wait = backoffs[min(attempt, len(backoffs) - 1)]
@@ -924,9 +942,20 @@ async def stats(interaction: discord.Interaction, user: discord.User | None = No
 # =========================
 @bot.event
 async def on_ready():
+    global HTTP
+    if HTTP is None or HTTP.closed:
+        HTTP = aiohttp.ClientSession(headers={"User-Agent": USER_AGENT})
     await bot.tree.sync()  # global sync for DMs
     log.info("Logged in as %s", bot.user)
     log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
+
+@bot.event
+async def on_disconnect():
+    log.warning("Disconnected from Discord gateway.")
+
+@bot.event
+async def on_resumed():
+    log.info("Gateway session resumed.")
 
 if __name__ == "__main__":
     bot.run(TOKEN)
