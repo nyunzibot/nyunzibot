@@ -68,7 +68,6 @@ PLAP_LINES_INTIMATE_NATURAL = [
 
 # =========================
 # SUCC LINES (SEPARATE)
-# Keep these distinct from plap lines.
 # =========================
 SUCC_LINES_INTIMATE = [
     "😳 {actor} succs {target}, slow at first, like they’re testing the reaction.",
@@ -330,6 +329,8 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
 # =========================
 # PLAP BACK VIEW
+# NOTE: Your discord.py build can't replace attachments via Message.edit(files=...),
+# so we edit the embed/count on the SAME message, and send the new image as a new message.
 # =========================
 class PlapBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -385,23 +386,23 @@ class PlapBackView(discord.ui.View):
             name=f"{interaction.user.display_name} plaps back",
             icon_url=interaction.user.display_avatar.url,
         )
-        embed.set_image(url="attachment://action.jpg")
 
-        # keep the button clickable and show the live count
         button.label = f"Plapped ({self.count})"
         button.disabled = False
 
-        # EDIT the SAME message so the counter updates on the embed you see
-        try:
-            await interaction.message.edit(embed=embed, attachments=[], files=[file], view=self)
-            self.message = interaction.message
-        except TypeError:
-            # fallback for versions that don't accept files= on edit
-            await interaction.message.edit(embed=embed, view=self)
-            await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+        # Edit the SAME message (no file replace here)
+        await interaction.followup.edit_message(
+            message_id=interaction.message.id,
+            embed=embed,
+            view=self,
+        )
+
+        # Send new image separately
+        await interaction.followup.send(file=file)
 
 # =========================
 # SUCC BACK VIEW
+# Same behavior as above.
 # =========================
 class SuccBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -457,17 +458,17 @@ class SuccBackView(discord.ui.View):
             name=f"{interaction.user.display_name} succs back",
             icon_url=interaction.user.display_avatar.url,
         )
-        embed.set_image(url="attachment://action.jpg")
 
         button.label = f"Succ’d ({self.count})"
         button.disabled = False
 
-        try:
-            await interaction.message.edit(embed=embed, attachments=[], files=[file], view=self)
-            self.message = interaction.message
-        except TypeError:
-            await interaction.message.edit(embed=embed, view=self)
-            await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+        await interaction.followup.edit_message(
+            message_id=interaction.message.id,
+            embed=embed,
+            view=self,
+        )
+
+        await interaction.followup.send(file=file)
 
 # =========================
 # /plap (DM ONLY)
