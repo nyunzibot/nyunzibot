@@ -33,7 +33,7 @@ log.info("Process boot ✅")
 # GELBOORU_USER_ID
 # DB_PATH (optional)
 # =========================
-TOKEN = os.getenv("TOKEN", "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg")
+TOKEN = "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg"
 
 # Rule34 (XML)
 BOORU_API = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
