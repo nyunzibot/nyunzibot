@@ -3,6 +3,7 @@ import aiohttp
 import io
 import logging
 import os
+import sys
 import asyncio
 import sqlite3
 import time
@@ -13,6 +14,15 @@ from discord import app_commands
 from PIL import Image
 
 # =========================
+# FORCE FLUSH (Railway-friendly)
+# =========================
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
+# =========================
 # LOGGING (Railway-friendly)
 # =========================
 logging.basicConfig(
@@ -21,28 +31,34 @@ logging.basicConfig(
     force=True,
 )
 log = logging.getLogger("nyunzi")
+log.info("Process boot ✅")
 
 # =========================
 # SECRETS (USE ENV VARS IN RAILWAY)
 # =========================
-TOKEN = "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg"
+# Keep your literal defaults, but allow Railway env vars to override.
+TOKEN = os.getenv("TOKEN", "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg")
 
 # Rule34 (XML)
 BOORU_API = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
 USER_AGENT = "Rule34DiscordBot/1.0"
-RULE34_API_KEY = "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c21827b2222c2c3c59352c7a1b847b0d1e869838aee87a59a2d2bddb6811bbbdcae8"
-RULE34_USER_ID = "5699450"
+RULE34_API_KEY = os.getenv(
+    "RULE34_API_KEY",
+    "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c21827b2222c2c3c59352c7a1b847b0d1e869838aee87a59a2d2bddb6811bbbdcae8",
+)
+RULE34_USER_ID = os.getenv("RULE34_USER_ID", "5699450")
 
 # Gelbooru JSON API endpoint
 GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1"
-GELBOORU_API_KEY = "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e"
-GELBOORU_USER_ID = "1873378"
-
-# Put this on a Railway Volume for persistence, e.g. /data/stats.sqlite3
-# (kept your intent/structure)
-DB_PATH = "/data/stats.sqlite3" or "stats.sqlite3"
+GELBOORU_API_KEY = os.getenv(
+    "GELBOORU_API_KEY",
+    "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e",
+)
+GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "1873378")
 
 # Put on Railway Volume for persistence
+# (kept your intent/structure, but make env override real)
+DB_PATH = "/data/stats.sqlite3" or "stats.sqlite3"
 DB_PATH = os.getenv("DB_PATH", "/data/stats.sqlite3")
 
 if not TOKEN:
@@ -69,9 +85,6 @@ DEDUP_PULL_TRIES = 5
 
 # =========================
 # TAGS
-# - Base tags define the "action"
-# - Positive sets rotate to improve quality/diversity
-# - Negatives reduce "bad content"
 # =========================
 NEGATIVE_TAGS = (
     "-video -gif "
@@ -85,12 +98,9 @@ NEGATIVE_TAGS = (
     "-pregnant -birth -lactation"
 )
 
-# “Not explicit, just better positive tags” (still adult booru content can be explicit;
-# this is just aiming for higher quality / more consistent posts)
 PLAP_BASE = "futa_on_female sex_from_behind"
 SUCC_BASE = "futa_on_female oral"
 
-# Rotate these to avoid the same “top few” results
 PLAP_POSITIVE_SETS = [
     "1girl 1futa consensual",
     "solo_focus highres masterpiece",
@@ -110,7 +120,6 @@ SUCC_POSITIVE_SETS = [
 ]
 
 def build_tags(base: str, positives: list[str]) -> str:
-    # pick 1–2 positives to keep queries effective (not overly restrictive)
     p = random.sample(positives, k=2 if len(positives) >= 2 else 1)
     return f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
 
@@ -129,8 +138,10 @@ async def safe_defer(interaction: discord.Interaction, *, thinking: bool = True)
             await interaction.response.defer(thinking=thinking)
         return True
     except discord.NotFound:
+        log.warning("[DEFER] Unknown interaction (10062) – user clicked too late or network hiccup")
         return False
-    except Exception:
+    except Exception as e:
+        log.warning("[DEFER] failed: %s: %s", type(e).__name__, e)
         return False
 
 def should_lower_limit(http_status: int | None, exc: Exception | None, parse_failed: bool) -> bool:
@@ -366,14 +377,13 @@ class InteractionSeen:
 # PID TUNING (BIGGER = fewer repeats)
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
-    # IMPORTANT: high score => fewer pages => repeats. So widen pid a lot.
     if site == "gelbooru":
         if score_tag == "score:>50": return 800
         if score_tag == "score:>40": return 1200
         if score_tag == "score:>30": return 1800
         if score_tag == "score:>20": return 2500
         return 3500
-    else:  # rule34
+    else:
         if score_tag == "score:>50": return 900
         if score_tag == "score:>40": return 1400
         if score_tag == "score:>30": return 2200
@@ -385,6 +395,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
 # =========================
 async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not GELBOORU_API_KEY or not GELBOORU_USER_ID:
+        log.info("[GEL FETCH] skipped (missing key/user)")
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -409,6 +420,8 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                     "user_id": GELBOORU_USER_ID,
                 }
 
+                log.info("[GEL FETCH] -> request tier=%s limit=%s pid<=%s", tier_label, limit, pid_max)
+
                 try:
                     async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
                         async with session.get(
@@ -417,9 +430,10 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.info("[GEL FETCH] <- status=%s tier=%s limit=%s", http_status, tier_label, limit)
 
                             if http_status == 429:
+                                log.warning("[GEL FETCH] 429 rate limit – sleeping %ss", backoffs[1])
                                 await asyncio.sleep(backoffs[1])
                                 break
                             if http_status != 200:
@@ -429,11 +443,14 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     exc = e
+                    log.warning("[GEL FETCH] network/timeout: %s: %s", type(e).__name__, e)
                 except Exception as e:
                     exc = e
                     parse_failed = True
+                    log.warning("[GEL FETCH] json/parse error: %s: %s", type(e).__name__, e)
 
                 if should_lower_limit(http_status, exc, parse_failed):
+                    log.info("[GEL FETCH] lowering limit due to failure (tier=%s limit=%s)", tier_label, limit)
                     if http_status == 429:
                         await asyncio.sleep(backoffs[2])
                     break
@@ -473,6 +490,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 # =========================
 async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not RULE34_API_KEY or not RULE34_USER_ID:
+        log.info("[R34 FETCH] skipped (missing key/user)")
         return None
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
@@ -496,17 +514,20 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                     "user_id": RULE34_USER_ID,
                 }
 
+                log.info("[R34 FETCH] -> request tier=%s limit=%s pid<=%s", tier_label, limit, pid_max)
+
                 try:
                     async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
                         async with session.get(
-                            RULE34_API,
+                            BOORU_API,
                             params=params,
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.info("[R34 FETCH] <- status=%s tier=%s limit=%s", http_status, tier_label, limit)
 
                             if http_status == 429:
+                                log.warning("[R34 FETCH] 429 rate limit – sleeping %ss", backoffs[1])
                                 await asyncio.sleep(backoffs[1])
                                 break
                             if http_status != 200:
@@ -516,8 +537,10 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                     exc = e
+                    log.warning("[R34 FETCH] network/timeout: %s: %s", type(e).__name__, e)
 
                 if should_lower_limit(http_status, exc, parse_failed=False):
+                    log.info("[R34 FETCH] lowering limit due to failure (tier=%s limit=%s)", tier_label, limit)
                     if http_status == 429:
                         await asyncio.sleep(backoffs[2])
                     break
@@ -525,7 +548,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                 try:
                     root = ET.fromstring(xml or "")
                 except ET.ParseError as e:
-                    log.warning("[R34 FETCH] tier=%s limit=%s XML parse error: %s", tier_label, limit, e)
+                    log.warning("[R34 FETCH] XML parse error tier=%s limit=%s: %s", tier_label, limit, e)
                     break
 
                 posts = root.findall("post")
@@ -601,7 +624,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             wait = backoffs[min(attempt, len(backoffs) - 1)]
-            log.info("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
+            log.warning("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
             await asyncio.sleep(wait)
             continue
 
@@ -619,20 +642,25 @@ async def pick_image(tags: str, interaction_seen: InteractionSeen) -> tuple[str,
     recent_seen = await STATS_DB.load_recent_seen(max_age_days=30)
     avoid = set(recent_seen) | set(interaction_seen.md5s)
 
+    log.info("[PICK] tags_len=%s avoid_md5=%s", len(tags), len(avoid))
+
     picked = None
-    for _ in range(DEDUP_PULL_TRIES):
+    for i in range(DEDUP_PULL_TRIES):
+        log.info("[PICK] try=%s/%s", i + 1, DEDUP_PULL_TRIES)
         res = await fetch_image(tags, avoid_md5s=avoid)
         if not res:
+            log.warning("[PICK] fetch returned None")
             break
         url, md5, site = res
         if md5 and md5 in avoid:
+            log.info("[PICK] duplicate md5 (skip) site=%s", site)
             continue
         picked = (url, md5, site)
         break
 
     if picked and picked[1]:
-        # mark as seen globally so future interactions won’t repeat it
         await STATS_DB.mark_seen(picked[1], picked[2])
+        log.info("[PICK] selected site=%s md5=%s", picked[2], picked[1])
 
     return picked
 
@@ -661,6 +689,8 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        log.info("[BTN] plap_back clicked by=%s", interaction.user.id)
+
         if interaction.user.id != self.original_target.id:
             await interaction.response.send_message("Not for you 😤", ephemeral=True)
             return
@@ -670,6 +700,8 @@ class PlapBackView(discord.ui.View):
             return
 
         tags = build_tags(PLAP_BASE, PLAP_POSITIVE_SETS)
+        log.info("[BTN] plap_back tags=%s", tags)
+
         picked = await pick_image(tags, self.seen)
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
@@ -726,6 +758,8 @@ class SuccBackView(discord.ui.View):
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        log.info("[BTN] succ_back clicked by=%s", interaction.user.id)
+
         if interaction.user.id != self.original_target.id:
             await interaction.response.send_message("Not for you 😤", ephemeral=True)
             return
@@ -735,6 +769,8 @@ class SuccBackView(discord.ui.View):
             return
 
         tags = build_tags(SUCC_BASE, SUCC_POSITIVE_SETS)
+        log.info("[BTN] succ_back tags=%s", tags)
+
         picked = await pick_image(tags, self.seen)
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
@@ -776,6 +812,8 @@ class SuccBackView(discord.ui.View):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def plap(interaction: discord.Interaction, target: discord.User):
+    log.info("[CMD] /plap actor=%s target=%s", interaction.user.id, target.id)
+
     if target.id == interaction.user.id:
         await interaction.response.send_message("Not yourself 😅", ephemeral=True)
         return
@@ -787,6 +825,8 @@ async def plap(interaction: discord.Interaction, target: discord.User):
     view = PlapBackView(interaction.user, target)
 
     tags = build_tags(PLAP_BASE, PLAP_POSITIVE_SETS)
+    log.info("[CMD] /plap tags=%s", tags)
+
     picked = await pick_image(tags, view.seen)
     if not picked:
         await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
@@ -821,6 +861,8 @@ async def plap(interaction: discord.Interaction, target: discord.User):
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
 async def succ(interaction: discord.Interaction, target: discord.User):
+    log.info("[CMD] /succ actor=%s target=%s", interaction.user.id, target.id)
+
     if target.id == interaction.user.id:
         await interaction.response.send_message("Not yourself 😅", ephemeral=True)
         return
@@ -832,6 +874,8 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     view = SuccBackView(interaction.user, target)
 
     tags = build_tags(SUCC_BASE, SUCC_POSITIVE_SETS)
+    log.info("[CMD] /succ tags=%s", tags)
+
     picked = await pick_image(tags, view.seen)
     if not picked:
         await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
@@ -896,5 +940,8 @@ async def on_ready():
     await bot.tree.sync()  # global sync for DMs
     log.info("Logged in as %s", bot.user)
     log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
+    log.info("DB_PATH=%s", DB_PATH)
+    log.info("Rule34 enabled=%s", bool(RULE34_API_KEY and RULE34_USER_ID))
+    log.info("Gelbooru enabled=%s", bool(GELBOORU_API_KEY and GELBOORU_USER_ID))
 
 bot.run(TOKEN)
