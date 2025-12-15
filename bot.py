@@ -103,28 +103,16 @@ NEGATIVE_TAGS = (
 )
 
 # Base tags (edit freely)
-PLAP_BASE = "futa_on_female sex_from_behind"
-SUCC_BASE = "futa_on_female oral"
+PLAP_BASE = "futa_on_female"
+SUCC_BASE = "futa_on_female"
 
 # Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
-    "1girl 1futa consensual",
-    "highres masterpiece",
-    "detailed_background lighting",
-    "close-up blush",
-    "bedroom lingerie",
-    "romantic smile",
-    "cute expression",
+    "sex_from_behind",
 ]
 
 SUCC_POSITIVE_SETS = [
-    "1girl 1futa consensual",
-    "highres masterpiece",
-    "close-up blush",
-    "romantic smile",
-    "lingerie",
-    "soft_lighting",
-    "cute expression",
+    "oral",
 ]
 
 def build_tags(base: str, positives: list[str]) -> str:
