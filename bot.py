@@ -790,11 +790,11 @@ class PlapBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_actor.id and interaction.user.id != self.original_target.id:
-            await interaction.followup.send(content="Not for you 😤", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Not for you 😤", ephemeral=True)
             return
 
         if self.rerolls_left <= 0:
-            await interaction.followup.send(content="No more refreshes on this one 😭", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="No more refreshes on this one 😭", ephemeral=True)
             return
 
         self.rerolls_left -= 1
@@ -804,13 +804,13 @@ class PlapBackView(discord.ui.View):
 
         picked = await pick_image(PLAP_BASE, PLAP_POSITIVE_SETS, self.seen)
         if not picked:
-            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
         image_url, md5, site, artist = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
-            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
@@ -835,7 +835,7 @@ class PlapBackView(discord.ui.View):
             )
         except Exception as e:
             log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True)
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -844,18 +844,18 @@ class PlapBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_target.id:
-            await interaction.followup.send(content="Not for you 😤", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Not for you 😤", ephemeral=True)
             return
 
         picked = await pick_image(PLAP_BASE, PLAP_POSITIVE_SETS, self.seen)
         if not picked:
-            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
         image_url, md5, site, artist = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
-            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
@@ -885,7 +885,7 @@ class PlapBackView(discord.ui.View):
         except Exception:
             pass
 
-        await interaction.followup.send(embed=full_embed, file=file, flags=SEND_FLAGS)
+        await interaction.followup.send(embed=full_embed, file=file)
 
 class SuccBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -915,11 +915,11 @@ class SuccBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_actor.id and interaction.user.id != self.original_target.id:
-            await interaction.followup.send(content="Not for you 😤", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Not for you 😤", ephemeral=True)
             return
 
         if self.rerolls_left <= 0:
-            await interaction.followup.send(content="No more refreshes on this one 😭", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="No more refreshes on this one 😭", ephemeral=True)
             return
 
         self.rerolls_left -= 1
@@ -929,13 +929,13 @@ class SuccBackView(discord.ui.View):
 
         picked = await pick_image(SUCC_BASE, SUCC_POSITIVE_SETS, self.seen)
         if not picked:
-            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
         image_url, md5, site, artist = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
-            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
@@ -960,7 +960,7 @@ class SuccBackView(discord.ui.View):
             )
         except Exception as e:
             log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True)
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -969,18 +969,18 @@ class SuccBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_target.id:
-            await interaction.followup.send(content="Not for you 😤", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Not for you 😤", ephemeral=True)
             return
 
         picked = await pick_image(SUCC_BASE, SUCC_POSITIVE_SETS, self.seen)
         if not picked:
-            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
         image_url, md5, site, artist = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
-            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
+            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
@@ -1010,7 +1010,7 @@ class SuccBackView(discord.ui.View):
         except Exception:
             pass
 
-        await interaction.followup.send(embed=full_embed, file=file, flags=SEND_FLAGS)
+        await interaction.followup.send(embed=full_embed, file=file)
 
 # =========================
 # /plap (DM ONLY)
@@ -1026,20 +1026,20 @@ async def plap(interaction: discord.Interaction, target: discord.User):
     log.info("[CMD] /plap actor=%s target=%s", interaction.user.id, target.id)
 
     if target.id == interaction.user.id:
-        await interaction.followup.send(content="Not yourself 😅", ephemeral=True, flags=SEND_FLAGS)
+        await interaction.followup.send(content="Not yourself 😅", ephemeral=True)
         return
 
     view = PlapBackView(interaction.user, target)
 
     picked = await pick_image(PLAP_BASE, PLAP_POSITIVE_SETS, view.seen)
     if not picked:
-        await interaction.followup.send(content="Couldn’t fetch an image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
+        await interaction.followup.send(content="Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
         return
 
     image_url, md5, site, artist = picked
     file = await process_image(image_url, max_attempts=3)
     if not file:
-        await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
+        await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True)
         return
 
     view.seen.add(md5)
@@ -1055,7 +1055,7 @@ async def plap(interaction: discord.Interaction, target: discord.User):
     embed.set_author(name=f"{interaction.user.display_name} used /plap", icon_url=interaction.user.display_avatar.url)
     embed.set_image(url="attachment://action.jpg")
 
-    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True, flags=SEND_FLAGS)
+    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
     view.message = msg
 
 # =========================
@@ -1072,20 +1072,20 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     log.info("[CMD] /succ actor=%s target=%s", interaction.user.id, target.id)
 
     if target.id == interaction.user.id:
-        await interaction.followup.send(content="Not yourself 😅", ephemeral=True, flags=SEND_FLAGS)
+        await interaction.followup.send(content="Not yourself 😅", ephemeral=True)
         return
 
     view = SuccBackView(interaction.user, target)
 
     picked = await pick_image(SUCC_BASE, SUCC_POSITIVE_SETS, view.seen)
     if not picked:
-        await interaction.followup.send(content="Couldn’t fetch an image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
+        await interaction.followup.send(content="Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
         return
 
     image_url, md5, site, artist = picked
     file = await process_image(image_url, max_attempts=3)
     if not file:
-        await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
+        await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True)
         return
 
     view.seen.add(md5)
@@ -1101,7 +1101,7 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     embed.set_author(name=f"{interaction.user.display_name} used /succ", icon_url=interaction.user.display_avatar.url)
     embed.set_image(url="attachment://action.jpg")
 
-    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True, flags=SEND_FLAGS)
+    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
     view.message = msg
 
 # =========================
@@ -1135,7 +1135,7 @@ async def stats(interaction: discord.Interaction, user: discord.User | None = No
         color=discord.Color.blurple(),
     )
     embed.set_author(name=user.display_name, icon_url=user.display_avatar.url)
-    await interaction.followup.send(embed=embed, ephemeral=True, flags=SEND_FLAGS)
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 # =========================
 # READY
