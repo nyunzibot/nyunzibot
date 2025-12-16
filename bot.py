@@ -109,23 +109,11 @@ SUCC_BASE = "futa_on_female oral"
 
 # Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
-    "1girl 1futa consensual",
-    "highres masterpiece",
-    "detailed_background lighting",
-    "close-up blush",
-    "bedroom lingerie",
-    "romantic smile",
-    "cute expression",
+    "1girl 1futa",
 ]
 
 SUCC_POSITIVE_SETS = [
-    "1girl 1futa consensual",
-    "highres masterpiece",
-    "close-up blush",
-    "romantic smile",
-    "lingerie",
-    "soft_lighting",
-    "cute expression",
+    "1girl 1futa",
 ]
 
 # Your artists (boost rotation)
@@ -147,11 +135,7 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
     p = random.sample(positives, k=2 if len(positives) >= 2 else 1)
     artist = random.choice(ARTIST_BOOSTS) if ARTIST_BOOSTS else None
 
-    strict = [
-        "highres",
-        "masterpiece",
-        "solo_focus",
-    ]
+    strict = []
 
     steps = []
 
