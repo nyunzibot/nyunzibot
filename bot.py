@@ -453,16 +453,16 @@ class InteractionSeen:
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
     if site == "gelbooru":
-        if score_tag == "score:>50": return 120
-        if score_tag == "score:>40": return 160
-        if score_tag == "score:>30": return 220
-        if score_tag == "score:>20": return 300
+        if score_tag == "score:>50": return 40
+        if score_tag == "score:>40": return 50
+        if score_tag == "score:>30": return 60
+        if score_tag == "score:>20": return 80
         return 450
     else:
-        if score_tag == "score:>50": return 120
-        if score_tag == "score:>40": return 160
-        if score_tag == "score:>30": return 220
-        if score_tag == "score:>20": return 300
+        if score_tag == "score:>50": return 40
+        if score_tag == "score:>40": return 50
+        if score_tag == "score:>30": return 60
+        if score_tag == "score:>20": return 80
         return 450
 
 # =========================
