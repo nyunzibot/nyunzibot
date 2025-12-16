@@ -106,14 +106,28 @@ SUCC_BASE = "futa_on_female oral"
 
 # Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
-    "1girl 1futa"
+    "1girl 1futa consensual",
+    "highres masterpiece",
+    "detailed_background lighting",
+    "close-up blush",
+    "bedroom lingerie",
+    "romantic smile",
+    "cute expression",
 ]
 
 SUCC_POSITIVE_SETS = [
-    "1girl 1futa"
+    "1girl 1futa consensual",
+    "highres masterpiece",
+    "close-up blush",
+    "romantic smile",
+    "lingerie",
+    "soft_lighting",
+    "cute expression",
 ]
 
-# Rotate artist/style boosts (optional quality)
+# =========================
+# ARTIST BOOSTS (rotate as optional quality boosts)
+# =========================
 ARTIST_BOOSTS = [
     "rikolo",
     "nyl2",
@@ -128,6 +142,51 @@ ARTIST_BOOSTS = [
     "grand_cupido",
 ]
 
+# =========================
+# QUALITY FILTERS
+# =========================
+BAD_EXTS = {".gif", ".webm", ".mp4"}
+MIN_DIM = 700
+MAX_FILE_SIZE = 20_000_000  # 20 MB
+
+def extract_artist(tags_str: str) -> str | None:
+    # Prefer known artist tags if present
+    if not tags_str:
+        return None
+    tags = set(tags_str.split())
+    for a in ARTIST_BOOSTS:
+        if a in tags:
+            return a
+    # Fallback: some boorus include "artist:" meta tags
+    for t in tags:
+        if t.startswith("artist:"):
+            return t.split("artist:", 1)[1] or None
+    return None
+
+def is_supported_file(url: str) -> bool:
+    if not url:
+        return False
+    lower = url.lower()
+    return not any(lower.endswith(ext) for ext in BAD_EXTS)
+
+def is_quality_ok(width: int | None, height: int | None, file_size: int | None) -> bool:
+    if width is not None and height is not None:
+        if min(width, height) < MIN_DIM:
+            return False
+    if file_size is not None and file_size > MAX_FILE_SIZE:
+        return False
+    return True
+
+# =========================
+# STRICT TAG LADDER (progressively relax)
+# =========================
+STRICT_STEPS = [
+    "highres masterpiece solo_focus",
+    "highres masterpiece",
+    "highres",
+    "",  # base+positives only
+]
+
 def build_tags(base: str, positives: list[str]) -> str:
     # pick 1–2 positives to keep queries effective but not too strict
     k = 2 if len(positives) >= 2 else 1
@@ -135,31 +194,24 @@ def build_tags(base: str, positives: list[str]) -> str:
     return f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
 
 def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
-    """Tag fallback ladder:
-    strict/high-quality -> relax step-by-step -> base only.
-    Also optionally injects a rotating artist boost for quality.
-    """
-    artist = random.choice(ARTIST_BOOSTS) if ARTIST_BOOSTS else None
+    # Try: strict + artist, strict (no artist), then relax strict step-by-step, and finally base only.
+    ladder: list[str] = []
+    for strict in STRICT_STEPS:
+        tagset = build_tags(base, positives)
+        if strict:
+            tagset = f"{tagset} {strict}".strip()
 
-    quality_strict = ["highres", "masterpiece"]
-    focus_strict = ["solo_focus"]
+        # with artist boost first
+        if ARTIST_BOOSTS:
+            artist = random.choice(ARTIST_BOOSTS)
+            ladder.append(f"{tagset} {artist}".strip())
 
-    k = 2 if len(positives) >= 2 else 1
-    p = random.sample(positives, k=k)
+        # then without artist
+        ladder.append(tagset)
 
-    ladders: list[list[str]] = [
-        [base, *p, *quality_strict, *focus_strict, artist],
-        [base, *p, *quality_strict, artist],
-        [base, *p, artist],
-        [base, *p],
-        [base],
-    ]
-
-    out: list[str] = []
-    for parts in ladders:
-        parts = [x for x in parts if x]
-        out.append(f"{' '.join(parts)} {NEGATIVE_TAGS}".strip())
-    return out
+    # final: base only + negatives (wildest but still filtered)
+    ladder.append(f"{base} {NEGATIVE_TAGS}".strip())
+    return ladder
 
 # =========================
 # BOT SETUP
@@ -193,25 +245,6 @@ def should_lower_limit(http_status: int | None, exc: Exception | None, parse_fai
     if http_status in (400, 413, 414, 422):
         return True
     return False
-
-
-def is_supported_file_url(url: str) -> bool:
-    u = (url or "").lower()
-    if not u.startswith("http"):
-        return False
-    for ext in (".webm", ".mp4", ".gif"):
-        if u.endswith(ext):
-            return False
-    return True
-
-def size_ok(width: int | None, height: int | None) -> bool:
-    if width is None or height is None:
-        return True
-    if width < 700 or height < 700:
-        return False
-    if width > 9000 or height > 9000:
-        return False
-    return True
 
 # =========================
 # LINES
@@ -455,7 +488,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
 # =========================
 # GELBOORU FETCH (JSON) -> (url, md5, site)
 # =========================
-async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str, str | None, str] | None:
     if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
         return None
 
@@ -489,7 +522,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.debug("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
                             if http_status == 429:
                                 await asyncio.sleep(backoffs[1])
@@ -529,30 +562,31 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                     md5 = p.get("md5")
                     if not url:
                         continue
-                    if not is_supported_file_url(url):
-                        continue
-                    w = p.get("width")
-                    h = p.get("height")
-                    try:
-                        w_i = int(w) if w is not None else None
-                        h_i = int(h) if h is not None else None
-                    except Exception:
-                        w_i = None
-                        h_i = None
-                    if not size_ok(w_i, h_i):
-                        continue
                     if md5 and md5 in avoid_md5s:
                         continue
-                    return (url, md5, "gelbooru")
+                    width = int(p.get("width")) if p.get("width") is not None else None
+                    height = int(p.get("height")) if p.get("height") is not None else None
+                    file_size = int(p.get("file_size")) if p.get("file_size") is not None else None
+                    if not is_supported_file(url):
+                        log.info("[SKIP] unsupported file type url=%s", url)
+                        continue
+                    if not is_quality_ok(width, height, file_size):
+                        log.info("[SKIP] low quality w=%s h=%s size=%s url=%s", width, height, file_size, url)
+                        continue
+                    tags_str = p.get("tags") or ""
+                    artist = extract_artist(tags_str)
+                    return (url, md5, "gelbooru", artist, tags_str)
 
-        log.debug("[GEL FETCH] tier=%s lowering score tier -> next", tier_label)
+            log.info("[GEL FETCH] tier=%s lowering limit -> next", tier_label)
+
+        log.info("[GEL FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
 
 # =========================
 # RULE34 FETCH (XML) -> (url, md5, site)
 # =========================
-async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str, str | None, str] | None:
     if not (RULE34_API_KEY and RULE34_USER_ID):
         return None
 
@@ -585,7 +619,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.debug("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
                             if http_status == 429:
                                 await asyncio.sleep(backoffs[1])
@@ -619,28 +653,31 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                     md5 = post.attrib.get("md5")
                     if not url:
                         continue
-                    if not is_supported_file_url(url):
-                        continue
-                    try:
-                        w_i = int(post.attrib.get("width")) if post.attrib.get("width") else None
-                        h_i = int(post.attrib.get("height")) if post.attrib.get("height") else None
-                    except Exception:
-                        w_i = None
-                        h_i = None
-                    if not size_ok(w_i, h_i):
-                        continue
                     if md5 and md5 in avoid_md5s:
                         continue
-                    return (url, md5, "rule34")
+                    width = int(post.attrib.get("width")) if post.attrib.get("width") else None
+                    height = int(post.attrib.get("height")) if post.attrib.get("height") else None
+                    file_size = int(post.attrib.get("file_size")) if post.attrib.get("file_size") else None
+                    if not is_supported_file(url):
+                        log.info("[SKIP] unsupported file type url=%s", url)
+                        continue
+                    if not is_quality_ok(width, height, file_size):
+                        log.info("[SKIP] low quality w=%s h=%s size=%s url=%s", width, height, file_size, url)
+                        continue
+                    tags_str = post.attrib.get("tags") or ""
+                    artist = extract_artist(tags_str)
+                    return (url, md5, "rule34", artist, tags_str)
 
-        log.debug("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
+            log.info("[R34 FETCH] tier=%s lowering limit -> next", tier_label)
+
+        log.info("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
 
 # =========================
 # WRAPPER: Gelbooru -> Rule34
 # =========================
-async def fetch_image(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str, str | None, str] | None:
     res = await fetch_image_gelbooru(tags, avoid_md5s)
     if res:
         return res
@@ -676,7 +713,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    log.debug("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
+                    log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
 
                     if resp.status == 429:
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
@@ -689,7 +726,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             wait = backoffs[min(attempt, len(backoffs) - 1)]
-            log.debug("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
+            log.info("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
             await asyncio.sleep(wait)
             continue
 
@@ -703,31 +740,25 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 # =========================
 # PICK IMAGE: dynamic tags + dedup (interaction + persistent)
 # =========================
-async def pick_image(tags: str | list[str], interaction_seen: InteractionSeen) -> tuple[str, str | None, str] | None:
+async def pick_image(tags: str, interaction_seen: InteractionSeen) -> tuple[str, str | None, str, str | None, str] | None:
     recent_seen = await STATS_DB.load_recent_seen(max_age_days=30)
     avoid = set(recent_seen) | set(interaction_seen.md5s)
 
-    tag_list = [tags] if isinstance(tags, str) else list(tags)
-
-    for tag_query in tag_list:
-        picked = None
-        for _ in range(DEDUP_PULL_TRIES):
-            res = await fetch_image(tag_query, avoid)
-            if not res:
-                break
-            url, md5, site = res
-            if md5 and md5 in avoid:
-                continue
-            picked = (url, md5, site)
+    picked = None
+    for _ in range(DEDUP_PULL_TRIES):
+        res = await fetch_image(tags, avoid)
+        if not res:
             break
+        url, md5, site, artist, tags_str = res
+        if md5 and md5 in avoid:
+            continue
+        picked = (url, md5, site, artist, tags_str)
+        break
 
-        if picked and picked[1]:
-            await STATS_DB.mark_seen(picked[1], picked[2])
-            return picked
-        if picked:
-            return picked
+    if picked and picked[1]:
+        await STATS_DB.mark_seen(picked[1], picked[2])
 
-    return None
+    return picked
 
 # =========================
 # VIEWS
@@ -740,6 +771,7 @@ class PlapBackView(discord.ui.View):
         self.count = 1
         self.message: discord.Message | None = None
         self.seen = InteractionSeen()
+        self.rerolls_left = 1
 
     async def on_timeout(self):
         for item in self.children:
@@ -752,52 +784,61 @@ class PlapBackView(discord.ui.View):
             except Exception:
                 pass
 
-    @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Refresh (1)", emoji="🔄", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
         ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
 
-        # Only the original actor can reroll their own message
         if interaction.user.id != self.original_actor.id:
-            await interaction.followup.send("Only the sender can reroll 🎲", ephemeral=True)
+            await interaction.followup.send("Only the sender can refresh 🔄", ephemeral=True)
             return
 
-        remaining = getattr(self, "rerolls_left", 3)
-        if remaining <= 0:
-            await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
+        if self.rerolls_left <= 0:
+            await interaction.followup.send("No refreshes left 😭", ephemeral=True)
             return
 
-        tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
-        picked = await pick_image(tags, self.seen)
+        ladder = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
+        picked = None
+        used_tags = None
+        for t in ladder:
+            log.info("[LADDER] trying tags=%s", t)
+            picked = await pick_image(t, self.seen)
+            if picked:
+                used_tags = t
+                break
+
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
-        image_url, md5, site = picked
+        image_url, md5, site, artist, tags_str = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
             await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
-        self.rerolls_left = remaining - 1
-        button.label = f"Reroll ({self.rerolls_left})"
+        self.rerolls_left -= 1
+        button.label = f"Refresh ({self.rerolls_left})"
+        if self.rerolls_left <= 0:
+            button.disabled = True
 
         line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=self.original_actor.mention, target=self.original_target.mention)
-        summary = plap_summary(self.original_actor, self.original_target, 1)
+        summary = plap_summary(self.original_actor, self.original_target, self.count)
 
         embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**\n\n`source: {site}`\\n`artist: {artist or 'unknown'}`\n`tags_used: {used_tags or 'unknown'}`",
             color=discord.Color.from_rgb(255, 182, 193),
         )
         embed.set_author(name=f"{self.original_actor.display_name} used /plap", icon_url=self.original_actor.display_avatar.url)
         embed.set_image(url="attachment://action.jpg")
 
         try:
-            await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, attachments=[file], view=self)
-        except Exception:
-            await interaction.followup.send(embed=embed, file=file, view=self)
+            await interaction.edit_original_response(content=summary, embed=embed, attachments=[], view=self, file=file)
+        except Exception as e:
+            log.warning("[REFRESH] edit_original_response failed: %s: %s", type(e).__name__, e)
+            await interaction.followup.send(content=summary, embed=embed, file=file, view=self)
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -809,13 +850,21 @@ class PlapBackView(discord.ui.View):
             await interaction.followup.send("Not for you 😤", ephemeral=True)
             return
 
-        tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
-        picked = await pick_image(tags, self.seen)
+        ladder = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
+        picked = None
+        used_tags = None
+        for t in ladder:
+            log.info("[LADDER] trying tags=%s", t)
+            picked = await pick_image(t, self.seen)
+            if picked:
+                used_tags = t
+                break
+
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
-        image_url, md5, site = picked
+        image_url, md5, site, artist, tags_str = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
             await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
@@ -829,7 +878,7 @@ class PlapBackView(discord.ui.View):
         summary = plap_summary(interaction.user, self.original_actor, self.count)
 
         full_embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**\n\n`source: {site}`\\n`artist: {artist or 'unknown'}`\n`tags_used: {used_tags or 'unknown'}`",
             color=discord.Color.from_rgb(173, 216, 230),
         )
         full_embed.set_author(name=f"{interaction.user.display_name} plaps back", icon_url=interaction.user.display_avatar.url)
@@ -837,12 +886,12 @@ class PlapBackView(discord.ui.View):
 
         button.label = f"Plapped ({self.count})"
         try:
-            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            await interaction.edit_original_response(view=self)
             self.message = interaction.message
         except Exception:
             pass
 
-        await interaction.followup.send(embed=full_embed, file=file)
+        await interaction.followup.send(content=summary, embed=full_embed, file=file)
 
 class SuccBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -852,6 +901,7 @@ class SuccBackView(discord.ui.View):
         self.count = 1
         self.message: discord.Message | None = None
         self.seen = InteractionSeen()
+        self.rerolls_left = 1
 
     async def on_timeout(self):
         for item in self.children:
@@ -864,51 +914,61 @@ class SuccBackView(discord.ui.View):
             except Exception:
                 pass
 
-    @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Refresh (1)", emoji="🔄", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
         ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
 
         if interaction.user.id != self.original_actor.id:
-            await interaction.followup.send("Only the sender can reroll 🎲", ephemeral=True)
+            await interaction.followup.send("Only the sender can refresh 🔄", ephemeral=True)
             return
 
-        remaining = getattr(self, "rerolls_left", 3)
-        if remaining <= 0:
-            await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
+        if self.rerolls_left <= 0:
+            await interaction.followup.send("No refreshes left 😭", ephemeral=True)
             return
 
-        tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
-        picked = await pick_image(tags, self.seen)
+        ladder = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
+        picked = None
+        used_tags = None
+        for t in ladder:
+            log.info("[LADDER] trying tags=%s", t)
+            picked = await pick_image(t, self.seen)
+            if picked:
+                used_tags = t
+                break
+
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
-        image_url, md5, site = picked
+        image_url, md5, site, artist, tags_str = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
             await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
-        self.rerolls_left = remaining - 1
-        button.label = f"Reroll ({self.rerolls_left})"
+        self.rerolls_left -= 1
+        button.label = f"Refresh ({self.rerolls_left})"
+        if self.rerolls_left <= 0:
+            button.disabled = True
 
         line = random.choice(SUCC_LINES_INTIMATE).format(actor=self.original_actor.mention, target=self.original_target.mention)
-        summary = succ_summary(self.original_actor, self.original_target, 1)
+        summary = succ_summary(self.original_actor, self.original_target, self.count)
 
         embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**\n\n`source: {site}`\\n`artist: {artist or 'unknown'}`\n`tags_used: {used_tags or 'unknown'}`",
             color=discord.Color.from_rgb(199, 21, 133),
         )
         embed.set_author(name=f"{self.original_actor.display_name} used /succ", icon_url=self.original_actor.display_avatar.url)
         embed.set_image(url="attachment://action.jpg")
 
         try:
-            await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, attachments=[file], view=self)
-        except Exception:
-            await interaction.followup.send(embed=embed, file=file, view=self)
+            await interaction.edit_original_response(content=summary, embed=embed, attachments=[], view=self, file=file)
+        except Exception as e:
+            log.warning("[REFRESH] edit_original_response failed: %s: %s", type(e).__name__, e)
+            await interaction.followup.send(content=summary, embed=embed, file=file, view=self)
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -920,13 +980,21 @@ class SuccBackView(discord.ui.View):
             await interaction.followup.send("Not for you 😤", ephemeral=True)
             return
 
-        tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
-        picked = await pick_image(tags, self.seen)
+        ladder = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
+        picked = None
+        used_tags = None
+        for t in ladder:
+            log.info("[LADDER] trying tags=%s", t)
+            picked = await pick_image(t, self.seen)
+            if picked:
+                used_tags = t
+                break
+
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
-        image_url, md5, site = picked
+        image_url, md5, site, artist, tags_str = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
             await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
@@ -940,7 +1008,7 @@ class SuccBackView(discord.ui.View):
         summary = succ_summary(interaction.user, self.original_actor, self.count)
 
         full_embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**\n\n`source: {site}`\\n`artist: {artist or 'unknown'}`\n`tags_used: {used_tags or 'unknown'}`",
             color=discord.Color.from_rgb(255, 105, 180),
         )
         full_embed.set_author(name=f"{interaction.user.display_name} succs back", icon_url=interaction.user.display_avatar.url)
@@ -948,12 +1016,12 @@ class SuccBackView(discord.ui.View):
 
         button.label = f"Succ’d ({self.count})"
         try:
-            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            await interaction.edit_original_response(view=self)
             self.message = interaction.message
         except Exception:
             pass
 
-        await interaction.followup.send(embed=full_embed, file=file)
+        await interaction.followup.send(content=summary, embed=full_embed, file=file)
 
 # =========================
 # /plap (DM ONLY)
@@ -975,13 +1043,21 @@ async def plap(interaction: discord.Interaction, target: discord.User):
 
     view = PlapBackView(interaction.user, target)
 
-    tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
-    picked = await pick_image(tags, view.seen)
+    ladder = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
+    picked = None
+    used_tags = None
+    for t in ladder:
+        log.info("[LADDER] trying tags=%s", t)
+        picked = await pick_image(t, view.seen)
+        if picked:
+            used_tags = t
+            break
+
     if not picked:
         await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
         return
 
-    image_url, md5, site = picked
+    image_url, md5, site, artist, tags_str = picked
     file = await process_image(image_url, max_attempts=3)
     if not file:
         await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
@@ -994,13 +1070,13 @@ async def plap(interaction: discord.Interaction, target: discord.User):
     summary = plap_summary(interaction.user, target, 1)
 
     embed = discord.Embed(
-        description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+        description=f"{line}\n\n**{summary}**\n\n`source: {site}`\\n`artist: {artist or 'unknown'}`\n`tags_used: {used_tags or 'unknown'}`",
         color=discord.Color.from_rgb(255, 182, 193),
     )
     embed.set_author(name=f"{interaction.user.display_name} used /plap", icon_url=interaction.user.display_avatar.url)
     embed.set_image(url="attachment://action.jpg")
 
-    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
+    msg = await interaction.followup.send(content=summary, embed=embed, file=file, view=view, wait=True)
     view.message = msg
 
 # =========================
@@ -1023,13 +1099,21 @@ async def succ(interaction: discord.Interaction, target: discord.User):
 
     view = SuccBackView(interaction.user, target)
 
-    tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
-    picked = await pick_image(tags, view.seen)
+    ladder = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
+    picked = None
+    used_tags = None
+    for t in ladder:
+        log.info("[LADDER] trying tags=%s", t)
+        picked = await pick_image(t, view.seen)
+        if picked:
+            used_tags = t
+            break
+
     if not picked:
         await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
         return
 
-    image_url, md5, site = picked
+    image_url, md5, site, artist, tags_str = picked
     file = await process_image(image_url, max_attempts=3)
     if not file:
         await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
@@ -1042,13 +1126,13 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     summary = succ_summary(interaction.user, target, 1)
 
     embed = discord.Embed(
-        description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+        description=f"{line}\n\n**{summary}**\n\n`source: {site}`\\n`artist: {artist or 'unknown'}`\n`tags_used: {used_tags or 'unknown'}`",
         color=discord.Color.from_rgb(199, 21, 133),
     )
     embed.set_author(name=f"{interaction.user.display_name} used /succ", icon_url=interaction.user.display_avatar.url)
     embed.set_image(url="attachment://action.jpg")
 
-    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
+    msg = await interaction.followup.send(content=summary, embed=embed, file=file, view=view, wait=True)
     view.message = msg
 
 # =========================
