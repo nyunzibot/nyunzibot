@@ -441,13 +441,13 @@ def pid_max_for(site: str, score_tag: str) -> int:
         if score_tag == "score:>40": return 50
         if score_tag == "score:>30": return 60
         if score_tag == "score:>20": return 80
-        return 450
+        return 100
     else:
         if score_tag == "score:>50": return 40
         if score_tag == "score:>40": return 50
         if score_tag == "score:>30": return 60
         if score_tag == "score:>20": return 80
-        return 450
+        return 100
 
 # =========================
 # HELPERS: extract artist
