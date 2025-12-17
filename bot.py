@@ -115,17 +115,17 @@ SUCC_POSITIVE_SETS = [
 
 # Rotate artist/style boosts (optional quality)
 ARTIST_BOOSTS = [
-    "rikolo",
-    "nyl2",
-    "nyunnzi",
-    "exga",
-    "affect3d",
-    "lewdua",
-    "zer0",
-    "afrobull",
-    "bouquetman",
-    "aanix",
-    "grand_cupido",
+    # "rikolo",
+    # "nyl2",
+    # "nyunnzi",
+    # "exga",
+    # "affect3d",
+    # "lewdua",
+    # "zer0",
+    # "afrobull",
+    # "bouquetman",
+    # "aanix",
+    # "grand_cupido",
 ]
 
 def build_tags(base: str, positives: list[str]) -> str:
