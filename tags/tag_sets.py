@@ -21,14 +21,14 @@ SUCC_BASE = "futa_on_female"
 # NOTE: Preserving the exact behavior from your original file:
 # these are missing commas on purpose (as in original), which concatenates strings.
 PLAP_POSITIVE_SETS = [
-    "sex_from_behind"
-    "bent_over"
-    "sex"
+    "sex_from_behind",
+    "bent_over",
+    "sex",
 ]
 
 SUCC_POSITIVE_SETS = [
-    "oral"
-    "fellatio"
+    "oral",
+    "fellatio",
 ]
 
 # Rotate artist/style boosts (optional quality)
