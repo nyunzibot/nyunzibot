@@ -1,0 +1,127 @@
+import random
+import discord
+import logging
+
+from bot.safe_defer import safe_defer
+from tags.tag_builder import build_tag_ladder
+from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS
+from fetch.pick import pick_image
+from images.process import process_image
+from db.stats import InteractionSeen
+from db.runtime import STATS_DB
+from text.plap_lines import PLAP_LINES_INTIMATE_NATURAL
+from text.summaries import plap_summary
+
+log = logging.getLogger("nyunzi")
+
+class PlapBackView(discord.ui.View):
+    def __init__(self, original_actor: discord.User, original_target: discord.User):
+        super().__init__(timeout=3600)
+        self.original_actor = original_actor
+        self.original_target = original_target
+        self.count = 1
+        self.message: discord.Message | None = None
+        self.seen = InteractionSeen()
+
+    async def on_timeout(self):
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+                item.label = "Expired"
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
+
+    @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
+    async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ok = await safe_defer(interaction, thinking=False)
+        if not ok:
+            return
+
+        # Only the original actor can reroll their own message
+        if interaction.user.id != self.original_actor.id:
+            await interaction.followup.send("Only the sender can reroll 🎲", ephemeral=True)
+            return
+
+        remaining = getattr(self, "rerolls_left", 3)
+        if remaining <= 0:
+            await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
+            return
+
+        tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
+        picked = await pick_image(tags, self.seen)
+        if not picked:
+            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            return
+
+        image_url, md5, site = picked
+        file = await process_image(image_url, max_attempts=3)
+        if not file:
+            await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
+            return
+
+        self.seen.add(md5)
+        self.rerolls_left = remaining - 1
+        button.label = f"Reroll ({self.rerolls_left})"
+
+        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=self.original_actor.mention, target=self.original_target.mention)
+        summary = plap_summary(self.original_actor, self.original_target, 1)
+
+        embed = discord.Embed(
+            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            color=discord.Color.from_rgb(255, 182, 193),
+        )
+        embed.set_author(name=f"{self.original_actor.display_name} used /plap", icon_url=self.original_actor.display_avatar.url)
+        embed.set_image(url="attachment://action.jpg")
+
+        try:
+            await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, attachments=[file], view=self)
+        except Exception:
+            await interaction.followup.send(embed=embed, file=file, view=self)
+
+    @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
+    async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ok = await safe_defer(interaction, thinking=True)
+        if not ok:
+            return
+
+        if interaction.user.id != self.original_target.id:
+            await interaction.followup.send("Not for you 😤", ephemeral=True)
+            return
+
+        tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
+        picked = await pick_image(tags, self.seen)
+        if not picked:
+            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            return
+
+        image_url, md5, site = picked
+        file = await process_image(image_url, max_attempts=3)
+        if not file:
+            await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
+            return
+
+        self.seen.add(md5)
+        self.count += 1
+        await STATS_DB.record_action("plap", interaction.user.id, self.original_actor.id, is_back=True)
+
+        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=interaction.user.mention, target=self.original_actor.mention)
+        summary = plap_summary(interaction.user, self.original_actor, self.count)
+
+        full_embed = discord.Embed(
+            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            color=discord.Color.from_rgb(173, 216, 230),
+        )
+        full_embed.set_author(name=f"{interaction.user.display_name} plaps back", icon_url=interaction.user.display_avatar.url)
+        full_embed.set_image(url="attachment://action.jpg")
+
+        button.label = f"Plapped ({self.count})"
+        try:
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            self.message = interaction.message
+        except Exception:
+            pass
+
+        await interaction.followup.send(embed=full_embed, file=file)
