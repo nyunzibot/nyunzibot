@@ -595,7 +595,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                     async with HTTP.get(
                         RULE34_API,
                         params=params,
-                        timeout=aiohttp.ClientTimeout(total=20),
+                       timeout=aiohttp.ClientTimeout(total=20),
                     ) as resp:
                         http_status = resp.status
                         log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
@@ -812,14 +812,12 @@ class PlapBackView(discord.ui.View):
         try:
             await interaction.followup.edit_message(
                 message_id=interaction.message.id,
-                embed=embed,
                 view=self,
-                attachments=[],
-                files=[file],
             )
         except Exception as e:
             log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True)
+
+        await interaction.followup.send(embed=embed, file=file)
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -937,14 +935,12 @@ class SuccBackView(discord.ui.View):
         try:
             await interaction.followup.edit_message(
                 message_id=interaction.message.id,
-                embed=embed,
                 view=self,
-                attachments=[],
-                files=[file],
             )
         except Exception as e:
             log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True)
+
+        await interaction.followup.send(embed=embed, file=file)
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
