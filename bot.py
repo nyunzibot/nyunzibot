@@ -101,16 +101,19 @@ NEGATIVE_TAGS = (
 )
 
 # Base tags (edit freely)
-PLAP_BASE = "futa_on_female sex_from_behind"
-SUCC_BASE = "futa_on_female oral"
+PLAP_BASE = "futa_on_female"
+SUCC_BASE = "futa_on_female"
 
 # Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
-    "1girl 1futa"
+    "sex_from_behind"
+    "bent_over"
+    "sex"
 ]
 
 SUCC_POSITIVE_SETS = [
-    "1girl 1futa"
+    "oral"
+    "fellatio"
 ]
 
 # Rotate artist/style boosts (optional quality)
@@ -174,7 +177,11 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def safe_defer(interaction: discord.Interaction, *, thinking: bool = True) -> bool:
     try:
         if not interaction.response.is_done():
-            await interaction.response.defer(thinking=thinking)
+            # Buttons / selects: NEVER use thinking=True (creates the stuck message in DMs)
+            if interaction.type == discord.InteractionType.component:
+                await interaction.response.defer(thinking=False)  # deferred message update
+            else:
+                await interaction.response.defer(thinking=thinking)
         return True
     except discord.NotFound:
         log.warning("[DEFER] Unknown interaction (10062) – clicked too late or network hiccup")
@@ -182,6 +189,7 @@ async def safe_defer(interaction: discord.Interaction, *, thinking: bool = True)
     except Exception as e:
         log.warning("[DEFER] failed: %s: %s", type(e).__name__, e)
         return False
+
 
 def should_lower_limit(http_status: int | None, exc: Exception | None, parse_failed: bool) -> bool:
     if parse_failed:
@@ -562,7 +570,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
-    LIMIT = 100           # fixed request size
+    LIMIT = 1000           # fixed request size
     MAX_ATTEMPTS = 5     # total requests per call (hard cap)
 
     async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
@@ -955,7 +963,7 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
+        ok = await safe_defer(interaction, thinking=False)
         if not ok:
             return
 
