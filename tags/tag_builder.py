@@ -3,7 +3,7 @@ from .tag_sets import NEGATIVE_TAGS, ARTIST_BOOSTS
 
 def build_tags(base: str, positives: list[str]) -> str:
     # pick 1–2 positives to keep queries effective but not too strict
-    k = 2 if len(positives) >= 2 else 1
+    k = 1
     p = random.sample(positives, k=k)
     return f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
 
