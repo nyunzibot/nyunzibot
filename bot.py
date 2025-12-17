@@ -139,13 +139,13 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
 
     steps = []
 
-    s0 = f"{base} {' '.join(p)} {' '.join(strict)} {('artist:' + artist) if artist else ''} {NEGATIVE_TAGS}".strip()
+    s0 = f"{base} {' '.join(p)} {' '.join(strict)} {(artist) if artist else ''} {NEGATIVE_TAGS}".strip()
     steps.append(s0)
 
-    s1 = f"{base} {' '.join(p)} {' '.join(strict[:-1])} {('artist:' + artist) if artist else ''} {NEGATIVE_TAGS}".strip()
+    s1 = f"{base} {' '.join(p)} {' '.join(strict[:-1])} {(artist) if artist else ''} {NEGATIVE_TAGS}".strip()
     steps.append(s1)
 
-    s2 = f"{base} {' '.join(p)} {('artist:' + artist) if artist else ''} {NEGATIVE_TAGS}".strip()
+    s2 = f"{base} {' '.join(p)} {(artist) if artist else ''} {NEGATIVE_TAGS}".strip()
     steps.append(s2)
 
     s3 = f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
