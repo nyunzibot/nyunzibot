@@ -87,7 +87,7 @@ LIMIT_TIERS = [25, 15, 10, 5, 1]
 # - When enabled, searches ONLY by artist tags (no base tags / positives)
 # - Uses higher limits and NO score filter
 # =========================
-ARTIST_ONLY_MODE = False
+ARTIST_ONLY_MODE = True
 SCORE_TIERS_ARTISTONLY = [""]
 LIMIT_TIERS_ARTISTONLY = [100, 75, 50, 25]
 
@@ -478,17 +478,17 @@ class InteractionSeen:
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
     if site == "gelbooru":
-        if score_tag == "score:>50": return 120
-        if score_tag == "score:>40": return 160
-        if score_tag == "score:>30": return 220
-        if score_tag == "score:>20": return 300
-        return 450
+        if score_tag == "score:>50": return 1
+        if score_tag == "score:>40": return 2
+        if score_tag == "score:>30": return 3
+        if score_tag == "score:>20": return 4
+        return 5
     else:
-        if score_tag == "score:>50": return 120
-        if score_tag == "score:>40": return 160
-        if score_tag == "score:>30": return 220
-        if score_tag == "score:>20": return 300
-        return 450
+        if score_tag == "score:>50": return 1
+        if score_tag == "score:>40": return 2
+        if score_tag == "score:>30": return 3
+        if score_tag == "score:>20": return 4
+        return 5
 
 # =========================
 # HELPERS: extract artist
