@@ -477,7 +477,6 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 
                 params = {
                     "limit": limit,
-                    "pid": random.randint(0, pid_max),
                     "tags": full_tags,
                     "api_key": GELBOORU_API_KEY,
                     "user_id": GELBOORU_USER_ID,
@@ -574,7 +573,6 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 
                 params = {
                     "limit": limit,
-                    "pid": random.randint(0, pid_max),
                     "tags": full_tags,
                     "api_key": RULE34_API_KEY,
                     "user_id": RULE34_USER_ID,
