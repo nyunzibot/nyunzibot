@@ -109,11 +109,23 @@ SUCC_BASE = "futa_on_female oral"
 
 # Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
-    "1girl 1futa",
+    "1girl 1futa consensual",
+    "highres masterpiece",
+    "detailed_background lighting",
+    "close-up blush",
+    "bedroom lingerie",
+    "romantic smile",
+    "cute expression",
 ]
 
 SUCC_POSITIVE_SETS = [
-    "1girl 1futa",
+    "1girl 1futa consensual",
+    "highres masterpiece",
+    "close-up blush",
+    "romantic smile",
+    "lingerie",
+    "soft_lighting",
+    "cute expression",
 ]
 
 # Your artists (boost rotation)
@@ -131,18 +143,15 @@ ARTIST_BOOSTS = [
     "grand_cupido",
 ]
 
-# Toggle: set True to use ONLY artist tags (no base/positives), with higher limits and no score filters
-ARTIST_ONLY_MODE = True
-
-# When ARTIST_ONLY_MODE=True, these override SCORE_TIERS / LIMIT_TIERS
-ARTIST_ONLY_SCORE_TIERS = [""]
-ARTIST_ONLY_LIMIT_TIERS = [100, 90, 80]
-
 def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
     p = random.sample(positives, k=2 if len(positives) >= 2 else 1)
     artist = random.choice(ARTIST_BOOSTS) if ARTIST_BOOSTS else None
 
-    strict = []
+    strict = [
+        "highres",
+        "masterpiece",
+        "solo_focus",
+    ]
 
     steps = []
 
@@ -167,12 +176,6 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
         if t and t not in out:
             out.append(t)
     return out
-
-def build_artist_only_ladder() -> list[str]:
-    if not ARTIST_BOOSTS:
-        return []
-    picks = random.sample(ARTIST_BOOSTS, k=min(5, len(ARTIST_BOOSTS)))
-    return [f"artist:{a} {NEGATIVE_TAGS}".strip() for a in picks]
 
 # =========================
 # BOT SETUP
@@ -450,17 +453,17 @@ class InteractionSeen:
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
     if site == "gelbooru":
-        if score_tag == "score:>50": return 40
-        if score_tag == "score:>40": return 50
-        if score_tag == "score:>30": return 60
-        if score_tag == "score:>20": return 80
-        return 80
+        if score_tag == "score:>50": return 120
+        if score_tag == "score:>40": return 160
+        if score_tag == "score:>30": return 220
+        if score_tag == "score:>20": return 300
+        return 450
     else:
-        if score_tag == "score:>50": return 40
-        if score_tag == "score:>40": return 50
-        if score_tag == "score:>30": return 60
-        if score_tag == "score:>20": return 80
-        return 80
+        if score_tag == "score:>50": return 120
+        if score_tag == "score:>40": return 160
+        if score_tag == "score:>30": return 220
+        if score_tag == "score:>20": return 300
+        return 450
 
 # =========================
 # HELPERS: extract artist
@@ -489,16 +492,12 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
-    score_tiers = ARTIST_ONLY_SCORE_TIERS if ARTIST_ONLY_MODE else SCORE_TIERS
-
-    for score_tag in score_tiers:
+    for score_tag in SCORE_TIERS:
         tier_label = score_tag or "no-score"
         full_tags = f"{tags} {score_tag}".strip()
         pid_max = pid_max_for("gelbooru", score_tag)
 
-        limit_tiers = ARTIST_ONLY_LIMIT_TIERS if ARTIST_ONLY_MODE else LIMIT_TIERS
-
-        for limit in limit_tiers:
+        for limit in LIMIT_TIERS:
             for _ in range(PAGES_PER_LIMIT):
                 http_status = None
                 exc: Exception | None = None
@@ -589,16 +588,12 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
-    score_tiers = ARTIST_ONLY_SCORE_TIERS if ARTIST_ONLY_MODE else SCORE_TIERS
-
-    for score_tag in score_tiers:
+    for score_tag in SCORE_TIERS:
         tier_label = score_tag or "no-score"
         full_tags = f"{tags} {score_tag}".strip()
         pid_max = pid_max_for("rule34", score_tag)
 
-        limit_tiers = ARTIST_ONLY_LIMIT_TIERS if ARTIST_ONLY_MODE else LIMIT_TIERS
-
-        for limit in limit_tiers:
+        for limit in LIMIT_TIERS:
             for _ in range(PAGES_PER_LIMIT):
                 http_status = None
                 exc: Exception | None = None
@@ -742,7 +737,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 # PICK IMAGE: tag ladder + dedup (interaction + persistent)
 # =========================
 async def pick_image(base: str, positives: list[str], interaction_seen: InteractionSeen) -> tuple[str, str | None, str, str] | None:
-    ladder = build_artist_only_ladder() if ARTIST_ONLY_MODE else build_tag_ladder(base, positives)
+    ladder = build_tag_ladder(base, positives)
     recent_seen = await STATS_DB.load_recent_seen(max_age_days=30)
     avoid = set(recent_seen) | set(interaction_seen.md5s)
 
@@ -831,10 +826,16 @@ class PlapBackView(discord.ui.View):
         embed.set_image(url="attachment://action.jpg")
 
         try:
-            await interaction.message.edit(embed=embed, view=self, attachments=[file])
+            await interaction.followup.edit_message(
+                message_id=interaction.message.id,
+                embed=embed,
+                view=self,
+                attachments=[],
+                files=[file],
+            )
         except Exception as e:
             log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-            await interaction.followup.send(content="Refresh failed 😭", ephemeral=True)
+            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True)
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -950,10 +951,16 @@ class SuccBackView(discord.ui.View):
         embed.set_image(url="attachment://action.jpg")
 
         try:
-            await interaction.message.edit(embed=embed, view=self, attachments=[file])
+            await interaction.followup.edit_message(
+                message_id=interaction.message.id,
+                embed=embed,
+                view=self,
+                attachments=[],
+                files=[file],
+            )
         except Exception as e:
             log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-            await interaction.followup.send(content="Refresh failed 😭", ephemeral=True)
+            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True)
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
