@@ -562,7 +562,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
-    LIMIT = 1000           # fixed request size
+    LIMIT = 100           # fixed request size
     MAX_ATTEMPTS = 5     # total requests per call (hard cap)
 
     async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
@@ -757,7 +757,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
-    LIMIT = 1000          # fixed batch size
+    LIMIT = 100          # fixed batch size
     MAX_ATTEMPTS = 5    # total requests per call (hard cap)
 
     async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
