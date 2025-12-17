@@ -104,8 +104,8 @@ NEGATIVE_TAGS = (
 )
 
 # Base tags (edit freely)
-PLAP_BASE = "sex_from_behind"
-SUCC_BASE = "oral"
+PLAP_BASE = "futa_on_female sex_from_behind"
+SUCC_BASE = "futa_on_female oral"
 
 # Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
@@ -168,25 +168,12 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
             out.append(t)
     return out
 
-
-def build_artist_only_ladder(base: str, tries: int = 6) -> list[str]:
-    # Artist-only mode:
-    # - uses ONLY artist tags (no positives ladder)
-    # - still includes the action base tags (per user request)
-    # - keeps NEGATIVE_TAGS
-    base = (base or "").strip()
-    out: list[str] = []
+def build_artist_only_ladder() -> list[str]:
     if not ARTIST_BOOSTS:
-        t = f"{base} {NEGATIVE_TAGS}".strip()
-        return [" ".join(t.split())] if t else []
+        return []
+    picks = random.sample(ARTIST_BOOSTS, k=min(5, len(ARTIST_BOOSTS)))
+    return [f"{a} {NEGATIVE_TAGS}".strip() for a in picks]
 
-    picks = random.sample(ARTIST_BOOSTS, k=min(tries, len(ARTIST_BOOSTS)))
-    for a in picks:
-        t = f"{base} {a} {NEGATIVE_TAGS}".strip()
-        t = " ".join(t.split())
-        if t and t not in out:
-            out.append(t)
-    return out
 # =========================
 # BOT SETUP
 # =========================
