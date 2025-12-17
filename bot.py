@@ -141,8 +141,8 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
     """
     artist = random.choice(ARTIST_BOOSTS) if ARTIST_BOOSTS else None
 
-    quality_strict = ["highres", "masterpiece"]
-    focus_strict = ["solo_focus"]
+    quality_strict = []
+    focus_strict = []
 
     k = 2 if len(positives) >= 2 else 1
     p = random.sample(positives, k=k)
