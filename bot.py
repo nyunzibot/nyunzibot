@@ -465,7 +465,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
 # =========================
 # GELBOORU FETCH (JSON) -> (url, md5, site)
 # =========================
-async def fetch_image_gelbooru_old(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_gelbooru_01(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
         return None
 
@@ -564,7 +564,7 @@ async def fetch_image_gelbooru_old(tags: str, avoid_md5s: set[str]) -> tuple[str
 # GELBOORU FETCH (JSON) -> (url, md5, site)
 # NO PID, NO SCORE TIERS, NO LIMIT TIERS
 # =========================
-async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_gelbooru_02(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
         return None
 
@@ -667,9 +667,113 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
     return None
 
 # =========================
+# GELBOORU FETCH (JSON) -> (url, md5, site)
+# NO PID, NO LIMIT TIERS
+async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+    if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
+        return None
+
+    backoffs = [0.0, 1.0, 2.5, 5.0]
+
+    LIMIT = 50
+    ATTEMPTS_PER_TIER = 3  # total requests per score tier
+
+    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+        for score_tag in SCORE_TIERS:
+            tier_label = score_tag or "no-score"
+            full_tags = f"{tags} {score_tag}".strip()
+
+            for attempt in range(1, ATTEMPTS_PER_TIER + 1):
+                http_status: int | None = None
+                exc: Exception | None = None
+                parse_failed = False
+                data = None
+
+                params = {
+                    "limit": LIMIT,
+                    "tags": full_tags,
+                    "api_key": GELBOORU_API_KEY,
+                    "user_id": GELBOORU_USER_ID,
+                    "json": 1,
+                }
+
+                try:
+                    async with session.get(
+                        GELBOORU_API,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        http_status = resp.status
+                        log.info("[GEL FETCH] tier=%s attempt=%s/%s limit=%s status=%s",
+                                 tier_label, attempt, ATTEMPTS_PER_TIER, LIMIT, http_status)
+                        log.info("[GEL FETCH] url=%s", resp.url)
+
+                        if http_status == 429:
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+                        if http_status != 200:
+                            continue
+
+                        data = await resp.json(content_type=None)
+
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    exc = e
+                except Exception as e:
+                    exc = e
+                    parse_failed = True
+
+                if should_lower_limit(http_status, exc, parse_failed):
+                    if http_status == 429:
+                        await asyncio.sleep(backoffs[min(attempt + 1, len(backoffs) - 1)])
+                    continue
+
+                posts = None
+                if isinstance(data, dict):
+                    posts = data.get("post")
+                elif isinstance(data, list):
+                    posts = data
+
+                if not posts:
+                    continue
+                if isinstance(posts, dict):
+                    posts = [posts]
+
+                random.shuffle(posts)
+                for p in posts:
+                    if not isinstance(p, dict):
+                        continue
+                    url = p.get("file_url")
+                    md5 = p.get("md5")
+                    if not url:
+                        continue
+                    if not is_supported_file_url(url):
+                        continue
+
+                    w = p.get("width")
+                    h = p.get("height")
+                    try:
+                        w_i = int(w) if w is not None else None
+                        h_i = int(h) if h is not None else None
+                    except Exception:
+                        w_i = None
+                        h_i = None
+
+                    if not size_ok(w_i, h_i):
+                        continue
+                    if md5 and md5 in avoid_md5s:
+                        continue
+
+                    return (url, md5, "gelbooru")
+
+            log.info("[GEL FETCH] tier=%s exhausted -> next tier", tier_label)
+
+    return None
+
+
+# =========================
 # RULE34 FETCH (XML) -> (url, md5, site)
 # =========================
-async def fetch_image_rule34_old(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_rule34_01(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (RULE34_API_KEY and RULE34_USER_ID):
         return None
 
@@ -759,7 +863,8 @@ async def fetch_image_rule34_old(tags: str, avoid_md5s: set[str]) -> tuple[str, 
 # RULE34 FETCH (XML) -> (url, md5, site)
 # NO PID, NO SCORE TIERS, NO LIMIT TIERS
 # =========================
-async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_rule34_02(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+    
     if not (RULE34_API_KEY and RULE34_USER_ID):
         return None
 
@@ -842,6 +947,100 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 
                 # ✅ resolve immediately
                 return (url, md5, "rule34")
+
+    return None
+
+# =========================
+# RULE34 FETCH (XML) -> (url, md5, site)
+# NO PID, NO LIMIT TIERS
+# =========================
+async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+    if not (RULE34_API_KEY and RULE34_USER_ID):
+        return None
+
+    backoffs = [0.0, 1.0, 2.5, 5.0]
+
+    LIMIT = 50
+    ATTEMPTS_PER_TIER = 3  # total requests per score tier
+
+    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+        for score_tag in SCORE_TIERS:
+            tier_label = score_tag or "no-score"
+            full_tags = f"{tags} {score_tag}".strip()
+
+            for attempt in range(1, ATTEMPTS_PER_TIER + 1):
+                http_status: int | None = None
+                exc: Exception | None = None
+                xml: str | None = None
+
+                params = {
+                    "limit": LIMIT,
+                    "tags": full_tags,
+                    "api_key": RULE34_API_KEY,
+                    "user_id": RULE34_USER_ID,
+                }
+
+                try:
+                    async with session.get(
+                        RULE34_API,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        http_status = resp.status
+                        log.info("[R34 FETCH] tier=%s attempt=%s/%s limit=%s status=%s",
+                                 tier_label, attempt, ATTEMPTS_PER_TIER, LIMIT, http_status)
+                        log.info("[R34 FETCH] url=%s", resp.url)
+
+                        if http_status == 429:
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+                        if http_status != 200:
+                            continue
+
+                        xml = await resp.text()
+
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    exc = e
+
+                if should_lower_limit(http_status, exc, parse_failed=False):
+                    if http_status == 429:
+                        await asyncio.sleep(backoffs[min(attempt + 1, len(backoffs) - 1)])
+                    continue
+
+                try:
+                    root = ET.fromstring(xml or "")
+                except ET.ParseError as e:
+                    log.warning("[R34 FETCH] tier=%s XML parse error: %s", tier_label, e)
+                    continue
+
+                posts = root.findall("post")
+                if not posts:
+                    continue
+
+                random.shuffle(posts)
+                for post in posts:
+                    url = post.attrib.get("file_url")
+                    md5 = post.attrib.get("md5")
+                    if not url:
+                        continue
+                    if not is_supported_file_url(url):
+                        continue
+
+                    try:
+                        w_i = int(post.attrib.get("width")) if post.attrib.get("width") else None
+                        h_i = int(post.attrib.get("height")) if post.attrib.get("height") else None
+                    except Exception:
+                        w_i = None
+                        h_i = None
+
+                    if not size_ok(w_i, h_i):
+                        continue
+                    if md5 and md5 in avoid_md5s:
+                        continue
+
+                    return (url, md5, "rule34")
+
+            log.info("[R34 FETCH] tier=%s exhausted -> next tier", tier_label)
 
     return None
 
