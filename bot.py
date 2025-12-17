@@ -172,7 +172,7 @@ def build_artist_only_ladder() -> list[str]:
     if not ARTIST_BOOSTS:
         return []
     picks = random.sample(ARTIST_BOOSTS, k=min(5, len(ARTIST_BOOSTS)))
-    return [f"artist:{a} {NEGATIVE_TAGS}".strip() for a in picks]
+    return [f"{a} {NEGATIVE_TAGS}".strip() for a in picks]
 
 # =========================
 # BOT SETUP
