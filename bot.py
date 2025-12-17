@@ -489,7 +489,8 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.debug("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.info("[GEL FETCH] url=%s", resp.url)
 
                             if http_status == 429:
                                 await asyncio.sleep(backoffs[1])
@@ -585,7 +586,8 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.debug("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.info("[R34 FETCH] url=%s", resp.url)
 
                             if http_status == 429:
                                 await asyncio.sleep(backoffs[1])
