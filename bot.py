@@ -661,7 +661,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 # =========================
 # RULE34 FETCH (XML) -> (url, md5, site)
 # =========================
-async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_rule34_old(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (RULE34_API_KEY and RULE34_USER_ID):
         return None
 
@@ -746,6 +746,97 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
         log.info("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
+
+# =========================
+# RULE34 FETCH (XML) -> (url, md5, site)
+# NO PID, NO SCORE TIERS, NO LIMIT TIERS
+# =========================
+async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+    if not (RULE34_API_KEY and RULE34_USER_ID):
+        return None
+
+    backoffs = [0.0, 1.0, 2.5, 5.0]
+
+    LIMIT = 1000          # fixed batch size
+    MAX_ATTEMPTS = 5    # total requests per call (hard cap)
+
+    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            http_status: int | None = None
+            exc: Exception | None = None
+            xml: str | None = None
+
+            params = {
+                "limit": LIMIT,
+                "tags": tags.strip(),
+                "api_key": RULE34_API_KEY,
+                "user_id": RULE34_USER_ID,
+            }
+
+            try:
+                async with session.get(
+                    RULE34_API,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                ) as resp:
+                    http_status = resp.status
+                    log.info("[R34 FETCH] attempt=%s/%s limit=%s status=%s", attempt, MAX_ATTEMPTS, LIMIT, http_status)
+                    log.info("[R34 FETCH] url=%s", resp.url)
+
+                    if http_status == 429:
+                        # back off (slightly increasing)
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+                    if http_status != 200:
+                        continue
+
+                    xml = await resp.text()
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                exc = e
+
+            if should_lower_limit(http_status, exc, parse_failed=False):
+                if http_status == 429:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                continue
+
+            try:
+                root = ET.fromstring(xml or "")
+            except ET.ParseError as e:
+                log.warning("[R34 FETCH] XML parse error: %s", e)
+                continue
+
+            posts = root.findall("post")
+            if not posts:
+                continue
+
+            random.shuffle(posts)
+
+            for post in posts:
+                url = post.attrib.get("file_url")
+                md5 = post.attrib.get("md5")
+                if not url:
+                    continue
+                if not is_supported_file_url(url):
+                    continue
+
+                try:
+                    w_i = int(post.attrib.get("width")) if post.attrib.get("width") else None
+                    h_i = int(post.attrib.get("height")) if post.attrib.get("height") else None
+                except Exception:
+                    w_i = None
+                    h_i = None
+
+                if not size_ok(w_i, h_i):
+                    continue
+                if md5 and md5 in avoid_md5s:
+                    continue
+
+                # ✅ resolve immediately
+                return (url, md5, "rule34")
+
+    return None
+
 
 # =========================
 # WRAPPER: Gelbooru -> Rule34
