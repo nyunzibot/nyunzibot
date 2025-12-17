@@ -75,8 +75,8 @@ SCORE_TIERS = [
     "",  # final fallback: no score filter
 ]
 
-LIMIT_TIERS = [25, 15, 10, 5, 1]
-PAGES_PER_LIMIT = 3
+LIMIT_TIERS = [100, 50]
+PAGES_PER_LIMIT = 1
 DEDUP_PULL_TRIES = 6
 
 # =========================
@@ -438,7 +438,8 @@ class InteractionSeen:
 # PID TUNING (BIGGER = fewer repeats)
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
-    # IMPORTANT: high score => fewer pages => repeats. So widen pid a lot.
+    # IMPORTANT: high score => fewer pages => repeats.
+    # Widen pid substantially so each retry explores different pages (fewer total fetches needed).
     if site == "gelbooru":
         if score_tag == "score:>50": return 1
         if score_tag == "score:>40": return 2
@@ -451,6 +452,7 @@ def pid_max_for(site: str, score_tag: str) -> int:
         if score_tag == "score:>30": return 3
         if score_tag == "score:>20": return 4
         return 5
+
 
 # =========================
 # GELBOORU FETCH (JSON) -> (url, md5, site)
@@ -489,7 +491,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.debug("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
                             if http_status == 429:
                                 await asyncio.sleep(backoffs[1])
@@ -545,7 +547,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                         continue
                     return (url, md5, "gelbooru")
 
-        log.info("[GEL FETCH] tier=%s lowering score tier -> next", tier_label)
+        log.debug("[GEL FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
 
@@ -585,7 +587,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
+                            log.debug("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
                             if http_status == 429:
                                 await asyncio.sleep(backoffs[1])
@@ -633,7 +635,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                         continue
                     return (url, md5, "rule34")
 
-        log.info("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
+        log.debug("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
 
@@ -676,7 +678,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
+                    log.debug("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
 
                     if resp.status == 429:
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
@@ -689,7 +691,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             wait = backoffs[min(attempt, len(backoffs) - 1)]
-            log.info("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
+            log.debug("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
             await asyncio.sleep(wait)
             continue
 
