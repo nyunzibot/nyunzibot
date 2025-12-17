@@ -75,8 +75,8 @@ SCORE_TIERS = [
     "",  # final fallback: no score filter
 ]
 
-LIMIT_TIERS = [100, 50]
-PAGES_PER_LIMIT = 1
+LIMIT_TIERS = [25, 15, 10, 5, 1]
+PAGES_PER_LIMIT = 3
 DEDUP_PULL_TRIES = 6
 
 # =========================
@@ -438,8 +438,7 @@ class InteractionSeen:
 # PID TUNING (BIGGER = fewer repeats)
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
-    # IMPORTANT: high score => fewer pages => repeats.
-    # Widen pid substantially so each retry explores different pages (fewer total fetches needed).
+    # IMPORTANT: high score => fewer pages => repeats. So widen pid a lot.
     if site == "gelbooru":
         if score_tag == "score:>50": return 1
         if score_tag == "score:>40": return 2
@@ -452,7 +451,6 @@ def pid_max_for(site: str, score_tag: str) -> int:
         if score_tag == "score:>30": return 3
         if score_tag == "score:>20": return 4
         return 5
-
 
 # =========================
 # GELBOORU FETCH (JSON) -> (url, md5, site)
@@ -491,8 +489,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.info("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
-                            log.info("[GEL FETCH] url=%s", resp.url)
+                            log.debug("[GEL FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
                             if http_status == 429:
                                 await asyncio.sleep(backoffs[1])
@@ -548,7 +545,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                         continue
                     return (url, md5, "gelbooru")
 
-        log.info("[GEL FETCH] tier=%s lowering score tier -> next", tier_label)
+        log.debug("[GEL FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
 
@@ -588,8 +585,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                             timeout=aiohttp.ClientTimeout(total=20),
                         ) as resp:
                             http_status = resp.status
-                            log.info("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
-                            log.info("[R34 FETCH] url=%s", resp.url)
+                            log.debug("[R34 FETCH] tier=%s limit=%s pid<=%s status=%s", tier_label, limit, pid_max, http_status)
 
                             if http_status == 429:
                                 await asyncio.sleep(backoffs[1])
@@ -637,7 +633,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                         continue
                     return (url, md5, "rule34")
 
-        log.info("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
+        log.debug("[R34 FETCH] tier=%s lowering score tier -> next", tier_label)
 
     return None
 
@@ -680,7 +676,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    log.info("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
+                    log.debug("[IMG FETCH] attempt=%s/%s status=%s", attempt, max_attempts, resp.status)
 
                     if resp.status == 429:
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
@@ -693,7 +689,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             wait = backoffs[min(attempt, len(backoffs) - 1)]
-            log.info("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
+            log.debug("[IMG FETCH] exception=%s: %s — sleeping %ss", type(e).__name__, e, wait)
             await asyncio.sleep(wait)
             continue
 
@@ -755,23 +751,45 @@ class PlapBackView(discord.ui.View):
                 await self.message.edit(view=self)
             except Exception:
                 pass
+@discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
+async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
+    ok = await safe_defer(interaction, thinking=False)
+    if not ok:
+        return
 
-    @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
-    async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
-        if not ok:
-            return
+    # Only the original actor can reroll their own message
+    if interaction.user.id != self.original_actor.id:
+        await interaction.followup.send("Only the sender can reroll 🎲", ephemeral=True)
+        return
 
-        # Only the original actor can reroll their own message
-        if interaction.user.id != self.original_actor.id:
-            await interaction.followup.send("Only the sender can reroll 🎲", ephemeral=True)
-            return
+    remaining = getattr(self, "rerolls_left", 3)
+    if remaining <= 0:
+        await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
+        return
 
-        remaining = getattr(self, "rerolls_left", 3)
-        if remaining <= 0:
-            await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
-            return
+    # lightweight "animation" while we fetch/process (edits the same message; no stuck “thinking…” bubbles)
+    stop_spin = asyncio.Event()
 
+    async def _spin():
+        frames = ["🎲 Rerolling.", "🎲 Rerolling..", "🎲 Rerolling..."]
+        i = 0
+        emb = discord.Embed(description=frames[0], color=discord.Color.dark_grey())
+        while not stop_spin.is_set():
+            emb.description = frames[i % len(frames)]
+            try:
+                await interaction.followup.edit_message(
+                    message_id=interaction.message.id,
+                    embed=emb,
+                    view=self,
+                )
+            except Exception:
+                pass
+            i += 1
+            await asyncio.sleep(0.35)
+
+    spin_task = asyncio.create_task(_spin())
+
+    try:
         tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
@@ -802,10 +820,17 @@ class PlapBackView(discord.ui.View):
             await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, attachments=[file], view=self)
         except Exception:
             await interaction.followup.send(embed=embed, file=file, view=self)
+    finally:
+        stop_spin.set()
+        try:
+            await spin_task
+        except Exception:
+            pass
+
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
+        ok = await safe_defer(interaction, thinking=False)
         if not ok:
             return
 
@@ -867,22 +892,44 @@ class SuccBackView(discord.ui.View):
                 await self.message.edit(view=self)
             except Exception:
                 pass
+@discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
+async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
+    ok = await safe_defer(interaction, thinking=False)
+    if not ok:
+        return
 
-    @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
-    async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
-        if not ok:
-            return
+    if interaction.user.id != self.original_actor.id:
+        await interaction.followup.send("Only the sender can reroll 🎲", ephemeral=True)
+        return
 
-        if interaction.user.id != self.original_actor.id:
-            await interaction.followup.send("Only the sender can reroll 🎲", ephemeral=True)
-            return
+    remaining = getattr(self, "rerolls_left", 3)
+    if remaining <= 0:
+        await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
+        return
 
-        remaining = getattr(self, "rerolls_left", 3)
-        if remaining <= 0:
-            await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
-            return
+    # lightweight "animation" while we fetch/process (edits the same message; no stuck “thinking…” bubbles)
+    stop_spin = asyncio.Event()
 
+    async def _spin():
+        frames = ["🎲 Rerolling.", "🎲 Rerolling..", "🎲 Rerolling..."]
+        i = 0
+        emb = discord.Embed(description=frames[0], color=discord.Color.dark_grey())
+        while not stop_spin.is_set():
+            emb.description = frames[i % len(frames)]
+            try:
+                await interaction.followup.edit_message(
+                    message_id=interaction.message.id,
+                    embed=emb,
+                    view=self,
+                )
+            except Exception:
+                pass
+            i += 1
+            await asyncio.sleep(0.35)
+
+    spin_task = asyncio.create_task(_spin())
+
+    try:
         tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
@@ -913,10 +960,17 @@ class SuccBackView(discord.ui.View):
             await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, attachments=[file], view=self)
         except Exception:
             await interaction.followup.send(embed=embed, file=file, view=self)
+    finally:
+        stop_spin.set()
+        try:
+            await spin_task
+        except Exception:
+            pass
+
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
+        ok = await safe_defer(interaction, thinking=False)
         if not ok:
             return
 
