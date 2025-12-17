@@ -82,6 +82,15 @@ SCORE_TIERS = [
 ]
 
 LIMIT_TIERS = [25, 15, 10, 5, 1]
+# =========================
+# ARTIST-ONLY MODE
+# - When enabled, searches ONLY by artist tags (no base tags / positives)
+# - Uses higher limits and NO score filter
+# =========================
+ARTIST_ONLY_MODE = False
+SCORE_TIERS_ARTISTONLY = [""]
+LIMIT_TIERS_ARTISTONLY = [100, 75, 50, 25]
+
 PAGES_PER_LIMIT = 3
 DEDUP_PULL_TRIES = 6
 
@@ -109,11 +118,23 @@ SUCC_BASE = "futa_on_female oral"
 
 # Rotate positives to avoid “same top few” posts
 PLAP_POSITIVE_SETS = [
-    "1girl 1futa",
+    "1girl 1futa consensual",
+    "highres masterpiece",
+    "detailed_background lighting",
+    "close-up blush",
+    "bedroom lingerie",
+    "romantic smile",
+    "cute expression",
 ]
 
 SUCC_POSITIVE_SETS = [
-    "1girl 1futa",
+    "1girl 1futa consensual",
+    "highres masterpiece",
+    "close-up blush",
+    "romantic smile",
+    "lingerie",
+    "soft_lighting",
+    "cute expression",
 ]
 
 # Your artists (boost rotation)
@@ -135,7 +156,11 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
     p = random.sample(positives, k=2 if len(positives) >= 2 else 1)
     artist = random.choice(ARTIST_BOOSTS) if ARTIST_BOOSTS else None
 
-    strict = []
+    strict = [
+        "highres",
+        "masterpiece",
+        "solo_focus",
+    ]
 
     steps = []
 
@@ -161,6 +186,22 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
             out.append(t)
     return out
 
+
+def build_artist_only_tags(base: str, tries: int = 6) -> list[str]:
+    # Artist-first mode: rotate through artists, but keep base tags too (per request)
+    base = (base or "").strip()
+    if not ARTIST_BOOSTS:
+        t = f"{base} {NEGATIVE_TAGS}".strip()
+        return [" ".join(t.split())] if t else [""]
+
+    picks = random.sample(ARTIST_BOOSTS, k=min(tries, len(ARTIST_BOOSTS)))
+    out: list[str] = []
+    for a in picks:
+        t = f"{base} {a} {NEGATIVE_TAGS}".strip()
+        t = " ".join(t.split())
+        if t and t not in out:
+            out.append(t)
+    return out
 # =========================
 # BOT SETUP
 # =========================
@@ -437,17 +478,17 @@ class InteractionSeen:
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
     if site == "gelbooru":
-        if score_tag == "score:>50": return 1
-        if score_tag == "score:>40": return 2
-        if score_tag == "score:>30": return 3
-        if score_tag == "score:>20": return 4
-        return 5
+        if score_tag == "score:>50": return 120
+        if score_tag == "score:>40": return 160
+        if score_tag == "score:>30": return 220
+        if score_tag == "score:>20": return 300
+        return 450
     else:
-        if score_tag == "score:>50": return 1
-        if score_tag == "score:>40": return 2
-        if score_tag == "score:>30": return 3
-        if score_tag == "score:>20": return 4
-        return 5
+        if score_tag == "score:>50": return 120
+        if score_tag == "score:>40": return 160
+        if score_tag == "score:>30": return 220
+        if score_tag == "score:>20": return 300
+        return 450
 
 # =========================
 # HELPERS: extract artist
@@ -476,12 +517,12 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
-    for score_tag in SCORE_TIERS:
+    for score_tag in (SCORE_TIERS_ARTISTONLY if ARTIST_ONLY_MODE else SCORE_TIERS):
         tier_label = score_tag or "no-score"
         full_tags = f"{tags} {score_tag}".strip()
         pid_max = pid_max_for("gelbooru", score_tag)
 
-        for limit in LIMIT_TIERS:
+        for limit in (LIMIT_TIERS_ARTISTONLY if ARTIST_ONLY_MODE else LIMIT_TIERS):
             for _ in range(PAGES_PER_LIMIT):
                 http_status = None
                 exc: Exception | None = None
@@ -572,12 +613,12 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
 
     backoffs = [0.0, 1.0, 2.5, 5.0]
 
-    for score_tag in SCORE_TIERS:
+    for score_tag in (SCORE_TIERS_ARTISTONLY if ARTIST_ONLY_MODE else SCORE_TIERS):
         tier_label = score_tag or "no-score"
         full_tags = f"{tags} {score_tag}".strip()
         pid_max = pid_max_for("rule34", score_tag)
 
-        for limit in LIMIT_TIERS:
+        for limit in (LIMIT_TIERS_ARTISTONLY if ARTIST_ONLY_MODE else LIMIT_TIERS):
             for _ in range(PAGES_PER_LIMIT):
                 http_status = None
                 exc: Exception | None = None
@@ -721,7 +762,7 @@ async def process_image(url: str, max_attempts: int = 3) -> discord.File | None:
 # PICK IMAGE: tag ladder + dedup (interaction + persistent)
 # =========================
 async def pick_image(base: str, positives: list[str], interaction_seen: InteractionSeen) -> tuple[str, str | None, str, str] | None:
-    ladder = build_tag_ladder(base, positives)
+    ladder = build_artist_only_tags(base) if ARTIST_ONLY_MODE else build_tag_ladder(base, positives)
     recent_seen = await STATS_DB.load_recent_seen(max_age_days=30)
     avoid = set(recent_seen) | set(interaction_seen.md5s)
 
@@ -774,11 +815,11 @@ class PlapBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_actor.id and interaction.user.id != self.original_target.id:
-            await interaction.followup.send(content="Not for you 😤", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Not for you 😤", ephemeral=True, flags=SEND_FLAGS)
             return
 
         if self.rerolls_left <= 0:
-            await interaction.followup.send(content="No more refreshes on this one 😭", ephemeral=True, silent=True)
+            await interaction.followup.send(content="No more refreshes on this one 😭", ephemeral=True, flags=SEND_FLAGS)
             return
 
         self.rerolls_left -= 1
@@ -788,13 +829,13 @@ class PlapBackView(discord.ui.View):
 
         picked = await pick_image(PLAP_BASE, PLAP_POSITIVE_SETS, self.seen)
         if not picked:
-            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
             return
 
         image_url, md5, site, artist = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
-            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
             return
 
         self.seen.add(md5)
@@ -819,7 +860,7 @@ class PlapBackView(discord.ui.View):
             )
         except Exception as e:
             log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True, flags=SEND_FLAGS)
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -828,18 +869,18 @@ class PlapBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_target.id:
-            await interaction.followup.send(content="Not for you 😤", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Not for you 😤", ephemeral=True, flags=SEND_FLAGS)
             return
 
         picked = await pick_image(PLAP_BASE, PLAP_POSITIVE_SETS, self.seen)
         if not picked:
-            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
             return
 
         image_url, md5, site, artist = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
-            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
             return
 
         self.seen.add(md5)
@@ -869,7 +910,7 @@ class PlapBackView(discord.ui.View):
         except Exception:
             pass
 
-        await interaction.followup.send(embed=full_embed, file=file, silent=True)
+        await interaction.followup.send(embed=full_embed, file=file, flags=SEND_FLAGS)
 
 class SuccBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -899,11 +940,11 @@ class SuccBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_actor.id and interaction.user.id != self.original_target.id:
-            await interaction.followup.send(content="Not for you 😤", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Not for you 😤", ephemeral=True, flags=SEND_FLAGS)
             return
 
         if self.rerolls_left <= 0:
-            await interaction.followup.send(content="No more refreshes on this one 😭", ephemeral=True, silent=True)
+            await interaction.followup.send(content="No more refreshes on this one 😭", ephemeral=True, flags=SEND_FLAGS)
             return
 
         self.rerolls_left -= 1
@@ -913,13 +954,13 @@ class SuccBackView(discord.ui.View):
 
         picked = await pick_image(SUCC_BASE, SUCC_POSITIVE_SETS, self.seen)
         if not picked:
-            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
             return
 
         image_url, md5, site, artist = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
-            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
             return
 
         self.seen.add(md5)
@@ -944,7 +985,7 @@ class SuccBackView(discord.ui.View):
             )
         except Exception as e:
             log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True, flags=SEND_FLAGS)
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -953,18 +994,18 @@ class SuccBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_target.id:
-            await interaction.followup.send(content="Not for you 😤", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Not for you 😤", ephemeral=True, flags=SEND_FLAGS)
             return
 
         picked = await pick_image(SUCC_BASE, SUCC_POSITIVE_SETS, self.seen)
         if not picked:
-            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
             return
 
         image_url, md5, site, artist = picked
         file = await process_image(image_url, max_attempts=3)
         if not file:
-            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, silent=True)
+            await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
             return
 
         self.seen.add(md5)
@@ -994,7 +1035,7 @@ class SuccBackView(discord.ui.View):
         except Exception:
             pass
 
-        await interaction.followup.send(embed=full_embed, file=file, silent=True)
+        await interaction.followup.send(embed=full_embed, file=file, flags=SEND_FLAGS)
 
 # =========================
 # /plap (DM ONLY)
@@ -1010,20 +1051,20 @@ async def plap(interaction: discord.Interaction, target: discord.User):
     log.info("[CMD] /plap actor=%s target=%s", interaction.user.id, target.id)
 
     if target.id == interaction.user.id:
-        await interaction.followup.send(content="Not yourself 😅", ephemeral=True, silent=True)
+        await interaction.followup.send(content="Not yourself 😅", ephemeral=True, flags=SEND_FLAGS)
         return
 
     view = PlapBackView(interaction.user, target)
 
     picked = await pick_image(PLAP_BASE, PLAP_POSITIVE_SETS, view.seen)
     if not picked:
-        await interaction.followup.send(content="Couldn’t fetch an image right now 😭 Try again.", ephemeral=True, silent=True)
+        await interaction.followup.send(content="Couldn’t fetch an image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
         return
 
     image_url, md5, site, artist = picked
     file = await process_image(image_url, max_attempts=3)
     if not file:
-        await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, silent=True)
+        await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
         return
 
     view.seen.add(md5)
@@ -1039,7 +1080,7 @@ async def plap(interaction: discord.Interaction, target: discord.User):
     embed.set_author(name=f"{interaction.user.display_name} used /plap", icon_url=interaction.user.display_avatar.url)
     embed.set_image(url="attachment://action.jpg")
 
-    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True, silent=True)
+    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True, flags=SEND_FLAGS)
     view.message = msg
 
 # =========================
@@ -1056,20 +1097,20 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     log.info("[CMD] /succ actor=%s target=%s", interaction.user.id, target.id)
 
     if target.id == interaction.user.id:
-        await interaction.followup.send(content="Not yourself 😅", ephemeral=True, silent=True)
+        await interaction.followup.send(content="Not yourself 😅", ephemeral=True, flags=SEND_FLAGS)
         return
 
     view = SuccBackView(interaction.user, target)
 
     picked = await pick_image(SUCC_BASE, SUCC_POSITIVE_SETS, view.seen)
     if not picked:
-        await interaction.followup.send(content="Couldn’t fetch an image right now 😭 Try again.", ephemeral=True, silent=True)
+        await interaction.followup.send(content="Couldn’t fetch an image right now 😭 Try again.", ephemeral=True, flags=SEND_FLAGS)
         return
 
     image_url, md5, site, artist = picked
     file = await process_image(image_url, max_attempts=3)
     if not file:
-        await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, silent=True)
+        await interaction.followup.send(content="Image failed 😭 (download/convert)", ephemeral=True, flags=SEND_FLAGS)
         return
 
     view.seen.add(md5)
@@ -1085,12 +1126,31 @@ async def succ(interaction: discord.Interaction, target: discord.User):
     embed.set_author(name=f"{interaction.user.display_name} used /succ", icon_url=interaction.user.display_avatar.url)
     embed.set_image(url="attachment://action.jpg")
 
-    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True, silent=True)
+    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True, flags=SEND_FLAGS)
     view.message = msg
 
 # =========================
 # /stats (DM ONLY) - COMBINED
 # =========================
+
+
+# =========================
+# /artistonly (DM ONLY)
+# Toggle artist-only mode (artist tags only, higher limit, no score filter)
+# =========================
+@bot.tree.command(name="artistonly", description="Toggle artist-only image search mode (DM only)")
+@app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
+@app_commands.allowed_installs(users=True, guilds=False)
+async def artistonly(interaction: discord.Interaction, enabled: bool):
+    ok = await safe_defer(interaction, thinking=False)
+    if not ok:
+        return
+
+    global ARTIST_ONLY_MODE
+    ARTIST_ONLY_MODE = bool(enabled)
+
+    mode = "ON ✅" if ARTIST_ONLY_MODE else "OFF ❌"
+    await interaction.followup.send(content=f"Artist-only mode is now **{mode}**", ephemeral=True)
 @bot.tree.command(name="stats", description="View plap + succ stats (DM only)")
 @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
 @app_commands.allowed_installs(users=True, guilds=False)
@@ -1119,7 +1179,7 @@ async def stats(interaction: discord.Interaction, user: discord.User | None = No
         color=discord.Color.blurple(),
     )
     embed.set_author(name=user.display_name, icon_url=user.display_avatar.url)
-    await interaction.followup.send(embed=embed, ephemeral=True, silent=True)
+    await interaction.followup.send(embed=embed, ephemeral=True, flags=SEND_FLAGS)
 
 # =========================
 # READY
