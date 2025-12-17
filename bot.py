@@ -437,17 +437,17 @@ class InteractionSeen:
 # =========================
 def pid_max_for(site: str, score_tag: str) -> int:
     if site == "gelbooru":
-        if score_tag == "score:>50": return 40
-        if score_tag == "score:>40": return 50
-        if score_tag == "score:>30": return 60
-        if score_tag == "score:>20": return 80
-        return 100
+        if score_tag == "score:>50": return 1
+        if score_tag == "score:>40": return 2
+        if score_tag == "score:>30": return 3
+        if score_tag == "score:>20": return 4
+        return 5
     else:
-        if score_tag == "score:>50": return 40
-        if score_tag == "score:>40": return 50
-        if score_tag == "score:>30": return 60
-        if score_tag == "score:>20": return 80
-        return 100
+        if score_tag == "score:>50": return 1
+        if score_tag == "score:>40": return 2
+        if score_tag == "score:>30": return 3
+        if score_tag == "score:>20": return 4
+        return 5
 
 # =========================
 # HELPERS: extract artist
