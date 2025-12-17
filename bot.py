@@ -441,13 +441,13 @@ def pid_max_for(site: str, score_tag: str) -> int:
         if score_tag == "score:>40": return 50
         if score_tag == "score:>30": return 60
         if score_tag == "score:>20": return 80
-        return 100
+        return 80
     else:
         if score_tag == "score:>50": return 40
         if score_tag == "score:>40": return 50
         if score_tag == "score:>30": return 60
         if score_tag == "score:>20": return 80
-        return 100
+        return 80
 
 # =========================
 # HELPERS: extract artist
@@ -769,7 +769,7 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Refresh (3)", emoji="🔄", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
+        ok = await safe_defer(interaction, thinking=False)
         if not ok:
             return
 
@@ -810,14 +810,14 @@ class PlapBackView(discord.ui.View):
         embed.set_image(url="attachment://action.jpg")
 
         try:
-            await interaction.followup.edit_message(
-                message_id=interaction.message.id,
+            await interaction.message.edit(
+                embed=embed,
                 view=self,
+                attachments=[file],
             )
         except Exception as e:
-            log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-
-        await interaction.followup.send(embed=embed, file=file)
+            log.warning("[REROLL] message.edit failed: %s: %s", type(e).__name__, e)
+            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True)
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -892,7 +892,7 @@ class SuccBackView(discord.ui.View):
 
     @discord.ui.button(label="Refresh (3)", emoji="🔄", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
+        ok = await safe_defer(interaction, thinking=False)
         if not ok:
             return
 
@@ -933,14 +933,14 @@ class SuccBackView(discord.ui.View):
         embed.set_image(url="attachment://action.jpg")
 
         try:
-            await interaction.followup.edit_message(
-                message_id=interaction.message.id,
+            await interaction.message.edit(
+                embed=embed,
                 view=self,
+                attachments=[file],
             )
         except Exception as e:
-            log.warning("[REROLL] edit_message failed: %s: %s", type(e).__name__, e)
-
-        await interaction.followup.send(embed=embed, file=file)
+            log.warning("[REROLL] message.edit failed: %s: %s", type(e).__name__, e)
+            await interaction.followup.send(content="Refresh failed to edit the message 😭", ephemeral=True)
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
