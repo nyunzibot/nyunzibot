@@ -75,40 +75,42 @@ class PlapBackView(discord.ui.View):
         loading_task = asyncio.create_task(loading_loop())
         # ---------- END looping loading animation ----------
 
+        err: str | None = None
+        embed = None
+        file = None
+
         try:
             tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
             picked = await pick_image(tags, self.seen)
             if not picked:
-                await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
-                return
+                err = "Couldn’t fetch a new image right now 😭 Try again."
+            else:
+                image_url, md5, site = picked
 
-            image_url, md5, site = picked
+                file, fname = await process_image(image_url, max_attempts=3)
+                if not file or not fname:
+                    err = "Media failed 😭 (download/convert)"
+                else:
+                    self.seen.add(md5)
+                    self.rerolls_left = remaining - 1
 
-            file, fname = await process_image(image_url, max_attempts=3)
-            if not file or not fname:
-                await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
-                return
+                    line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
+                        actor=self.original_actor.mention,
+                        target=self.original_target.mention
+                    )
+                    summary = plap_summary(self.original_actor, self.original_target, 1)
 
-            self.seen.add(md5)
-            self.rerolls_left = remaining - 1
+                    embed = discord.Embed(
+                        description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+                        color=discord.Color.from_rgb(255, 182, 193),
+                    )
+                    embed.set_author(
+                        name=f"{self.original_actor.display_name} used /plap",
+                        icon_url=self.original_actor.display_avatar.url
+                    )
 
-            line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
-                actor=self.original_actor.mention,
-                target=self.original_target.mention
-            )
-            summary = plap_summary(self.original_actor, self.original_target, 1)
-
-            embed = discord.Embed(
-                description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
-                color=discord.Color.from_rgb(255, 182, 193),
-            )
-            embed.set_author(
-                name=f"{self.original_actor.display_name} used /plap",
-                icon_url=self.original_actor.display_avatar.url
-            )
-
-            if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
-                embed.set_image(url=f"attachment://{fname}")
+                    if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+                        embed.set_image(url=f"attachment://{fname}")
 
         finally:
             # ---------- STOP loading animation ----------
@@ -119,8 +121,17 @@ class PlapBackView(discord.ui.View):
             except Exception:
                 pass
 
-        # restore button state
+        # restore button state (always)
         button.disabled = False
+        if err or not embed or not file:
+            button.label = f"Reroll ({remaining})"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
+            await interaction.followup.send(err or "Reroll failed 😭", ephemeral=True)
+            return
+
         button.label = f"Reroll ({self.rerolls_left})"
 
         try:
