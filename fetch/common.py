@@ -13,10 +13,10 @@ def is_supported_file_url(url: str) -> bool:
     u = (url or "").lower()
     if not u.startswith("http"):
         return False
-    #for ext in (".webm", ".mp4", ".gif"):
-    #    if u.endswith(ext):
-    #        return False
-    return True
+
+    # ✅ now allow images + gif + mp4/webm
+    ok_ext = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm")
+    return u.endswith(ok_ext)
 
 def size_ok(width: int | None, height: int | None) -> bool:
     if width is None or height is None:
