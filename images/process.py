@@ -7,8 +7,8 @@ from PIL import Image
 
 log = logging.getLogger("nyunzi")
 
-MAX_DISCORD_BYTES = 8_000_000          # typical bot upload limit
-MAX_DOWNLOAD_BYTES = 24_000_000        # safety
+MAX_DISCORD_BYTES = 25_000_000
+MAX_DOWNLOAD_BYTES = 40_000_000
 
 def _ext_from_url(url: str) -> str:
     u = (url or "").lower().split("?")[0].split("#")[0]
