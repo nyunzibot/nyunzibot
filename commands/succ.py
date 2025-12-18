@@ -41,16 +41,6 @@ def setup(bot: discord.Client):
 
         image_url, md5, site = picked
         file, fname = await process_image(image_url, max_attempts=3)
-        if file and fname:
-            # For jpg/gif, embed image attachment works.
-            # For mp4/webm, embed.set_image won't display the video; better to send link instead.
-            if fname.endswith((".mp4", ".webm")):
-                await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
-            else:
-                embed.set_image(url=f"attachment://{fname}")
-                msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
-        else:
-            msg = await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
 
         view.seen.add(md5)
         await STATS_DB.record_action("succ", interaction.user.id, target.id, is_back=False)
@@ -63,7 +53,16 @@ def setup(bot: discord.Client):
             color=discord.Color.from_rgb(199, 21, 133),
         )
         embed.set_author(name=f"{interaction.user.display_name} used /succ", icon_url=interaction.user.display_avatar.url)
-        embed.set_image(url="attachment://action.jpg")
 
-        msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
+        if file and fname:
+            # For jpg/gif, embed image attachment works.
+            # For mp4/webm, embed.set_image won't display the video; better to send link instead.
+            if fname.endswith((".mp4", ".webm")):
+                msg = await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
+            else:
+                embed.set_image(url=f"attachment://{fname}")
+                msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
+        else:
+            msg = await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
+
         view.message = msg
