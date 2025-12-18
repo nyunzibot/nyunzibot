@@ -23,12 +23,12 @@ SUCC_BASE = "futa_on_female"
 PLAP_POSITIVE_SETS = [
     "sex_from_behind",
     "bent_over",
-    "sex",
+    "sex"
 ]
 
 SUCC_POSITIVE_SETS = [
     "oral",
-    "fellatio",
+    "fellatio"
 ]
 
 # Rotate artist/style boosts (optional quality)
