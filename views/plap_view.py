@@ -106,7 +106,8 @@ class PlapBackView(discord.ui.View):
             actor=self.original_actor.mention,
             target=self.original_target.mention
         )
-        summary = plap_summary(self.original_actor, self.original_target, 1)
+        count = await STATS_DB.get_pair_count("plap", self.original_actor.id, self.original_target.id)
+        summary = plap_summary(self.original_actor, self.original_target, count)
 
         embed = discord.Embed(
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
@@ -157,14 +158,15 @@ class PlapBackView(discord.ui.View):
             return
 
         self.seen.add(md5)
-        self.count += 1
         await STATS_DB.record_action("plap", interaction.user.id, self.original_actor.id, is_back=True)
+        count = await STATS_DB.get_pair_count("plap", interaction.user.id, self.original_actor.id)
+        self.count = count
 
         line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
             actor=interaction.user.mention,
             target=self.original_actor.mention
         )
-        summary = plap_summary(interaction.user, self.original_actor, self.count)
+        summary = plap_summary(interaction.user, self.original_actor, count)
 
         full_embed = discord.Embed(
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",

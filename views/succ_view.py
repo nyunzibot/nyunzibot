@@ -103,7 +103,8 @@ class SuccBackView(discord.ui.View):
         button.label = f"Reroll ({self.rerolls_left})"
 
         line = random.choice(SUCC_LINES_INTIMATE).format(actor=self.original_actor.mention, target=self.original_target.mention)
-        summary = succ_summary(self.original_actor, self.original_target, 1)
+        count = await STATS_DB.get_pair_count("succ", self.original_actor.id, self.original_target.id)
+        summary = succ_summary(self.original_actor, self.original_target, count)
 
         embed = discord.Embed(
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
@@ -158,11 +159,12 @@ class SuccBackView(discord.ui.View):
             return
 
         self.seen.add(md5)
-        self.count += 1
         await STATS_DB.record_action("succ", interaction.user.id, self.original_actor.id, is_back=True)
+        count = await STATS_DB.get_pair_count("succ", interaction.user.id, self.original_actor.id)
+        self.count = count
 
         line = random.choice(SUCC_LINES_INTIMATE).format(actor=interaction.user.mention, target=self.original_actor.mention)
-        summary = succ_summary(interaction.user, self.original_actor, self.count)
+        summary = succ_summary(interaction.user, self.original_actor, count)
 
         full_embed = discord.Embed(
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",

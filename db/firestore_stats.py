@@ -38,6 +38,15 @@ class FirestoreStatsDB:
         # kind: "given" / "received"
         return f"{action}_{kind}"
 
+    @staticmethod
+    def _pair_doc_id(actor_id: int, target_id: int) -> str:
+        # Directed pair: actor -> target
+        return f"{actor_id}_{target_id}"
+
+    @staticmethod
+    def _pair_field(action: str) -> str:
+        return f"{action}_count"
+
     async def record_action(self, action: str, actor_id: int, target_id: int, is_back: bool):
         """
         Records:
@@ -49,6 +58,7 @@ class FirestoreStatsDB:
 
             actor_ref = self.db.collection("users").document(self._user_doc_id(actor_id))
             target_ref = self.db.collection("users").document(self._user_doc_id(target_id))
+            pair_ref = self.db.collection("pairs").document(self._pair_doc_id(actor_id, target_id))
 
             actor_updates = {
                 "user_id": str(actor_id),
@@ -60,9 +70,16 @@ class FirestoreStatsDB:
                 self._field(action, "received"): inc,
             }
 
+            pair_updates = {
+                "actor_id": str(actor_id),
+                "target_id": str(target_id),
+                self._pair_field(action): inc,
+            }
+
             batch = self.db.batch()
             batch.set(actor_ref, actor_updates, merge=True)
             batch.set(target_ref, target_updates, merge=True)
+            batch.set(pair_ref, pair_updates, merge=True)
             batch.commit()
 
         await self._run(work)
@@ -85,6 +102,24 @@ class FirestoreStatsDB:
                 "given": int(d.get(self._field(action, "given"), 0)),
                 "received": int(d.get(self._field(action, "received"), 0)),
             }
+
+        return await self._run(work)
+
+
+    async def get_pair_count(self, action: str, actor_id: int, target_id: int) -> int:
+        """Return directed pair count for actor -> target for the given action."""
+        def work():
+            ref = self.db.collection("pairs").document(self._pair_doc_id(actor_id, target_id))
+            snap = ref.get()
+            if not snap.exists:
+                ref.set({
+                    "actor_id": str(actor_id),
+                    "target_id": str(target_id),
+                    self._pair_field(action): 0,
+                }, merge=True)
+                return 0
+            d = snap.to_dict() or {}
+            return int(d.get(self._pair_field(action), 0))
 
         return await self._run(work)
 

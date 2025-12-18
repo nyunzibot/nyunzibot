@@ -45,9 +45,10 @@ def setup(bot: discord.Client):
 
         view.seen.add(md5)
         await STATS_DB.record_action("succ", interaction.user.id, target.id, is_back=False)
+        count = await STATS_DB.get_pair_count("succ", interaction.user.id, target.id)
 
         line = random.choice(SUCC_LINES_INTIMATE).format(actor=interaction.user.mention, target=target.mention)
-        summary = succ_summary(interaction.user, target, 1)
+        summary = succ_summary(interaction.user, target, count)
 
         embed = discord.Embed(
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
