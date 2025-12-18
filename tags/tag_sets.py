@@ -2,7 +2,6 @@
 # TAGS
 # =========================
 NEGATIVE_TAGS = (
-    "video "
     "-loli -shota -young -underage -child -minor -kid "
     "-furry -anthro -feral -animal -bestiality "
     "-rape -raped -nonconsensual -forced -dubious_consent "
