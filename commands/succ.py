@@ -12,6 +12,7 @@ from images.process import process_image
 from db.runtime import STATS_DB
 from text.succ_lines import SUCC_LINES_INTIMATE
 from text.summaries import succ_summary
+from fetch.pick import pick_media
 
 log = logging.getLogger("nyunzi")
 
@@ -21,7 +22,7 @@ def setup(bot: discord.Client):
     @app_commands.allowed_installs(users=True, guilds=False)
     async def succ(interaction: discord.Interaction, target: discord.User):
         # ACK FIRST (avoid 10062)
-        ok = await safe_defer(interaction, thinking=True, components_thinking=True)
+        ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
 
@@ -34,12 +35,12 @@ def setup(bot: discord.Client):
         view = SuccBackView(interaction.user, target)
 
         tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
-        picked = await pick_image(tags, view.seen)
+        picked = await pick_media(tags, view.seen, tries=8)
         if not picked:
             await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
             return
 
-        image_url, md5, site = picked
+        image_url, md5, site, file, fname = picked
         file, fname = await process_image(image_url, max_attempts=3)
 
         view.seen.add(md5)
