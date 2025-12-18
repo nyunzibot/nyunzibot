@@ -18,7 +18,7 @@ async def send_dm_notify(kind: str, actor: discord.abc.User, target: discord.abc
             second = random.choice(SUCC_NOTIFY_LINES).format(actor=actor_name)
 
         # Keep content short for mobile notifications
-        await target.send(f"{title}\n{second}")
+        await target.send(f"{second}")
     except Exception as e:
         # Don't spam logs at high volume; keep as debug/info.
         try:
