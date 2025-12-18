@@ -2,7 +2,7 @@
 # TAGS
 # =========================
 NEGATIVE_TAGS = (
-    "video -gif "
+    "-video gif "
     "-loli -shota -young -underage -child -minor -kid "
     "-furry -anthro -feral -animal -bestiality "
     "-rape -raped -nonconsensual -forced -dubious_consent "
@@ -33,15 +33,15 @@ SUCC_POSITIVE_SETS = [
 
 # Rotate artist/style boosts (optional quality)
 ARTIST_BOOSTS = [
-    "rikolo",
-    "nyl2",
-    "nyunnzi",
-    "exga",
-    "affect3d",
-    "lewdua",
-    "zer0",
-    "afrobull",
-    "bouquetman",
-    "aanix",
-    "grand_cupido",
+    # "rikolo",
+    # "nyl2",
+    # "nyunnzi",
+    # "exga",
+    # "affect3d",
+    # "lewdua",
+    # "zer0",
+    # "afrobull",
+    # "bouquetman",
+    # "aanix",
+    # "grand_cupido",
 ]
