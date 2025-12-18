@@ -226,7 +226,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
     LIMIT = 1
     MAX_ATTEMPTS = 5
     # Hard safety clamp so you don't accidentally blast huge pid values forever
-    PID_HARD_CAP = count - 1
+    PID_HARD_CAP = 10_000
 
     def extract_attrs_count(data) -> int | None:
         if not isinstance(data, dict):
@@ -281,6 +281,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 
                     data_probe = await resp.json(content_type=None)
                     count = extract_attrs_count(data_probe)
+                    PID_HARD_CAP = count - 1
                     break
 
             except (aiohttp.ClientError, asyncio.TimeoutError):
