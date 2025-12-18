@@ -1,8 +1,8 @@
 import logging
 from config import DB_PATH
-from .stats import StatsDB
+from db.firestore_stats import FirestoreStatsDB
 
 log = logging.getLogger("nyunzi")
 
-STATS_DB = StatsDB(DB_PATH)
+STATS_DB = FirestoreStatsDB()
 log.info("DB_PATH=%s", DB_PATH)
