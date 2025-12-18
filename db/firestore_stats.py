@@ -14,7 +14,6 @@ class FirestoreStatsDB:
         raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
 
         if not raw:
-            # Debug helper without leaking secrets
             firebase_keys = [k for k in os.environ.keys() if k.startswith("FIREBASE_")]
             raise RuntimeError(
                 "Missing env var FIREBASE_SERVICE_ACCOUNT_JSON in this running service/environment. "
@@ -30,32 +29,35 @@ class FirestoreStatsDB:
         return await asyncio.to_thread(fn, *args)
 
     @staticmethod
-    def _stats_doc_id(action: str, user_id: int) -> str:
-        return f"{action}_{str(user_id)}"
+    def _user_doc_id(user_id: int) -> str:
+        return str(user_id)
+
+    @staticmethod
+    def _field(action: str, kind: str) -> str:
+        # action: "plap" / "succ"
+        # kind: "given" / "received"
+        return f"{action}_{kind}"
 
     async def record_action(self, action: str, actor_id: int, target_id: int, is_back: bool):
+        """
+        Records:
+          actor  -> <action>_given += 1
+          target -> <action>_received += 1
+        """
         def work():
             inc = firestore.Increment(1)
 
-            actor_ref = self.db.collection("stats").document(
-                self._stats_doc_id(action, actor_id)
-            )
-            target_ref = self.db.collection("stats").document(
-                self._stats_doc_id(action, target_id)
-            )
+            actor_ref = self.db.collection("users").document(self._user_doc_id(actor_id))
+            target_ref = self.db.collection("users").document(self._user_doc_id(target_id))
 
             actor_updates = {
-                "action": action,
                 "user_id": str(actor_id),
-                "given": inc,
+                self._field(action, "given"): inc,
             }
-            if is_back:
-                actor_updates["backs"] = inc
 
             target_updates = {
-                "action": action,
                 "user_id": str(target_id),
-                "received": inc,
+                self._field(action, "received"): inc,
             }
 
             batch = self.db.batch()
@@ -66,30 +68,22 @@ class FirestoreStatsDB:
         await self._run(work)
 
     async def get_user(self, action: str, user_id: int) -> dict:
+        """
+        Returns:
+          {"given": x, "received": y}
+        """
         def work():
-            ref = self.db.collection("stats").document(
-                self._stats_doc_id(action, user_id)
-            )
+            ref = self.db.collection("users").document(self._user_doc_id(user_id))
             snap = ref.get()
 
             if not snap.exists:
-                ref.set(
-                    {
-                        "action": action,
-                        "user_id": str(user_id),
-                        "given": 0,
-                        "received": 0,
-                        "backs": 0,
-                    },
-                    merge=True,
-                )
-                return {"given": 0, "received": 0, "backs": 0}
+                ref.set({"user_id": str(user_id)}, merge=True)
+                return {"given": 0, "received": 0}
 
             d = snap.to_dict() or {}
             return {
-                "given": int(d.get("given", 0)),
-                "received": int(d.get("received", 0)),
-                "backs": int(d.get("backs", 0)),
+                "given": int(d.get(self._field(action, "given"), 0)),
+                "received": int(d.get(self._field(action, "received"), 0)),
             }
 
         return await self._run(work)
@@ -97,7 +91,6 @@ class FirestoreStatsDB:
     async def mark_seen(self, md5: str, site: str):
         def work():
             ref = self.db.collection("seen_md5").document(md5)
-            # first write wins
             ref.create(
                 {
                     "md5": md5,
@@ -109,7 +102,7 @@ class FirestoreStatsDB:
         try:
             await self._run(work)
         except Exception:
-            # already exists or race condition → ignore
+            # already exists → ignore
             return
 
     async def load_recent_seen(self, max_age_days: int = 30) -> set[str]:
