@@ -132,7 +132,7 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ✅ show thinking bubble for the NEW message, then delete it after
+        # ✅ show thinking bubble (we will turn THIS into the new message)
         try:
             if not interaction.response.is_done():
                 await interaction.response.defer(thinking=True)
@@ -175,23 +175,28 @@ class PlapBackView(discord.ui.View):
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             full_embed.set_image(url=f"attachment://{fname}")
 
-        button.label = f"Plapped ({self.count})"
-        try:
-            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
-            self.message = interaction.message
-        except Exception:
-            pass
-
-        # ✅ NEW: create a NEW message with a NEW view (like before)
+        # ✅ NEW: the "thinking..." message becomes the new message, with a NEW view
         new_view = PlapBackView(interaction.user, self.original_actor)
         new_view.seen = self.seen
         new_view.count = self.count
 
-        msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
-        new_view.message = msg
-
-        # ✅ remove the thinking placeholder so it doesn’t stick
         try:
-            await interaction.delete_original_response()
-        except Exception:
-            pass
+            msg = await interaction.edit_original_response(
+                embed=full_embed,
+                view=new_view,
+                files=[file],
+            )
+            new_view.message = msg
+        except TypeError:
+            # fallback for versions that don't accept files=
+            try:
+                msg = await interaction.edit_original_response(
+                    embed=full_embed,
+                    view=new_view,
+                    attachments=[file],
+                )
+                new_view.message = msg
+            except Exception:
+                # last resort: keep old message untouched, just send a new one
+                msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
+                new_view.message = msg
