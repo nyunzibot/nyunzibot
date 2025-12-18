@@ -132,8 +132,11 @@ class SuccBackView(discord.ui.View):
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True)
-        if not ok:
+        # ✅ show thinking bubble for the NEW message, then delete it after
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(thinking=True)
+        except Exception:
             return
 
         if interaction.user.id != self.original_target.id:
@@ -185,3 +188,9 @@ class SuccBackView(discord.ui.View):
 
         msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
         new_view.message = msg
+
+        # ✅ remove the thinking placeholder so it doesn’t stick
+        try:
+            await interaction.delete_original_response()
+        except Exception:
+            pass
