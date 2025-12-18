@@ -37,7 +37,7 @@ class SuccBackView(discord.ui.View):
 
     @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction)
+        ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
 
@@ -50,71 +50,70 @@ class SuccBackView(discord.ui.View):
             await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
             return
 
-        # ---------- START looping loading animation ----------
-        stop_loading = asyncio.Event()
-
-        async def loading_loop():
-            frames = ["Loading.", "Loading..", "Loading..."]
-            i = 0
-            while not stop_loading.is_set():
-                button.disabled = True
-                button.label = frames[i % 3]
-                try:
-                    await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
-                except Exception:
-                    pass
-                i += 1
-                try:
-                    await asyncio.wait_for(stop_loading.wait(), timeout=0.6)
-                except asyncio.TimeoutError:
-                    pass
-
-        loading_task = asyncio.create_task(loading_loop())
-        # ---------- END looping loading animation ----------
+        # ✅ loading animation (DM-safe): edit view label
+        button.disabled = True
+        button.label = "Loading."
+        try:
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
 
         try:
-            tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
-            picked = await pick_image(tags, self.seen)
-            if not picked:
-                await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
-                return
+            await asyncio.sleep(0.6)
+            button.label = "Loading.."
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
 
-            image_url, md5, site = picked
+            await asyncio.sleep(0.6)
+            button.label = "Loading..."
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
 
-            # CHANGED: process_media returns (file, fname)
-            file, fname = await process_image(image_url, max_attempts=3)
-            if not file or not fname:
-                await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
-                return
-
-            self.seen.add(md5)
-            self.rerolls_left = remaining - 1
-
-            line = random.choice(SUCC_LINES_INTIMATE).format(actor=self.original_actor.mention, target=self.original_target.mention)
-            summary = succ_summary(self.original_actor, self.original_target, 1)
-
-            embed = discord.Embed(
-                description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
-                color=discord.Color.from_rgb(199, 21, 133),
-            )
-            embed.set_author(name=f"{self.original_actor.display_name} used /succ", icon_url=self.original_actor.display_avatar.url)
-
-            # CHANGED: only set embed image for image/gif attachments
-            if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
-                embed.set_image(url=f"attachment://{fname}")
-
-        finally:
-            # ---------- STOP loading animation ----------
-            stop_loading.set()
-            loading_task.cancel()
+        tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
+        picked = await pick_image(tags, self.seen)
+        if not picked:
+            # restore button state
+            button.disabled = False
+            button.label = f"Reroll ({remaining})"
             try:
-                await loading_task
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
+            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            return
 
-        # restore button state
+        image_url, md5, site = picked
+
+        # CHANGED: process_media returns (file, fname)
+        file, fname = await process_image(image_url, max_attempts=3)
+        if not file or not fname:
+            # restore button state
+            button.disabled = False
+            button.label = f"Reroll ({remaining})"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
+            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
+            return
+
+        self.seen.add(md5)
+        self.rerolls_left = remaining - 1
         button.disabled = False
         button.label = f"Reroll ({self.rerolls_left})"
+
+        line = random.choice(SUCC_LINES_INTIMATE).format(actor=self.original_actor.mention, target=self.original_target.mention)
+        summary = succ_summary(self.original_actor, self.original_target, 1)
+
+        embed = discord.Embed(
+            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            color=discord.Color.from_rgb(199, 21, 133),
+        )
+        embed.set_author(name=f"{self.original_actor.display_name} used /succ", icon_url=self.original_actor.display_avatar.url)
+
+        # CHANGED: only set embed image for image/gif attachments
+        if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            embed.set_image(url=f"attachment://{fname}")
 
         try:
             # CHANGED: attachments=[file] where file is discord.File
@@ -125,11 +124,15 @@ class SuccBackView(discord.ui.View):
                 view=self
             )
         except Exception:
-            await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
+            # CHANGED: for video, send as link; otherwise attach
+            if fname.lower().endswith((".mp4", ".webm")):
+                await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
+            else:
+                await interaction.followup.send(embed=embed, file=file, view=self)
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction)
+        ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
 
@@ -140,7 +143,7 @@ class SuccBackView(discord.ui.View):
         tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
-            await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
+            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
         image_url, md5, site = picked
