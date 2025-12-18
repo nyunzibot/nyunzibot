@@ -57,16 +57,21 @@ class PlapBackView(discord.ui.View):
             return
 
         image_url, md5, site = picked
-        file = await process_image(image_url, max_attempts=3)
-        if not file:
-            await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
+
+        # CHANGED: process_media returns (file, fname)
+        file, fname = await process_image(image_url, max_attempts=3)
+        if not file or not fname:
+            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
         self.rerolls_left = remaining - 1
         button.label = f"Reroll ({self.rerolls_left})"
 
-        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=self.original_actor.mention, target=self.original_target.mention)
+        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
+            actor=self.original_actor.mention,
+            target=self.original_target.mention
+        )
         summary = plap_summary(self.original_actor, self.original_target, 1)
 
         embed = discord.Embed(
@@ -74,12 +79,25 @@ class PlapBackView(discord.ui.View):
             color=discord.Color.from_rgb(255, 182, 193),
         )
         embed.set_author(name=f"{self.original_actor.display_name} used /plap", icon_url=self.original_actor.display_avatar.url)
-        embed.set_image(url="attachment://action.jpg")
+
+        # CHANGED: only set embed image for image/gif attachments
+        if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            embed.set_image(url=f"attachment://{fname}")
 
         try:
-            await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, attachments=[file], view=self)
+            # CHANGED: use attachments=[file] where file is discord.File
+            await interaction.followup.edit_message(
+                message_id=interaction.message.id,
+                embed=embed,
+                attachments=[file],
+                view=self
+            )
         except Exception:
-            await interaction.followup.send(embed=embed, file=file, view=self)
+            # CHANGED: view=self (not view=view)
+            if fname.lower().endswith((".mp4", ".webm")):
+                await interaction.followup.send(content=image_url, embed=embed, view=self)
+            else:
+                await interaction.followup.send(embed=embed, file=file, view=self)
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -98,16 +116,21 @@ class PlapBackView(discord.ui.View):
             return
 
         image_url, md5, site = picked
-        file = await process_image(image_url, max_attempts=3)
-        if not file:
-            await interaction.followup.send("Image failed 😭 (download/convert)", ephemeral=True)
+
+        # CHANGED: process_media returns (file, fname)
+        file, fname = await process_image(image_url, max_attempts=3)
+        if not file or not fname:
+            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
         self.count += 1
         await STATS_DB.record_action("plap", interaction.user.id, self.original_actor.id, is_back=True)
 
-        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=interaction.user.mention, target=self.original_actor.mention)
+        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
+            actor=interaction.user.mention,
+            target=self.original_actor.mention
+        )
         summary = plap_summary(interaction.user, self.original_actor, self.count)
 
         full_embed = discord.Embed(
@@ -115,7 +138,10 @@ class PlapBackView(discord.ui.View):
             color=discord.Color.from_rgb(173, 216, 230),
         )
         full_embed.set_author(name=f"{interaction.user.display_name} plaps back", icon_url=interaction.user.display_avatar.url)
-        full_embed.set_image(url="attachment://action.jpg")
+
+        # CHANGED: only set embed image for image/gif attachments
+        if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            full_embed.set_image(url=f"attachment://{fname}")
 
         button.label = f"Plapped ({self.count})"
         try:
@@ -124,4 +150,8 @@ class PlapBackView(discord.ui.View):
         except Exception:
             pass
 
-        await interaction.followup.send(embed=full_embed, file=file)
+        # CHANGED: for video, send as link; otherwise attach
+        if fname.lower().endswith((".mp4", ".webm")):
+            await interaction.followup.send(content=image_url, embed=full_embed)
+        else:
+            await interaction.followup.send(embed=full_embed, file=file)
