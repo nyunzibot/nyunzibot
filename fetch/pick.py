@@ -2,41 +2,6 @@ from config import DEDUP_PULL_TRIES
 from .fetch_image import fetch_image
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
-# Put this near pick_image in fetch/pick.py
-from images.process import process_image  # make sure this import exists
-
-async def pick_media(tags, seen, *, tries: int = 8):
-    """
-    Returns: (image_url, md5, site, file, fname) or None
-
-    Behavior:
-    - If the chosen post is a video AND process_image returns (None, None)
-      (too large to attach / skipped), then we SKIP and retry another post.
-    - Otherwise we return what we got.
-    """
-    for _ in range(tries):
-        picked = await pick_image(tags, seen)
-        if not picked:
-            return None
-
-        image_url, md5, site = picked
-        file, fname = await process_image(image_url, max_attempts=3)
-
-        # ✅ If it's a video and we couldn't attach it, skip and retry
-        if _is_video_url(image_url) and (not file or not fname):
-            if md5:
-                seen.add(md5)
-            continue
-
-        return (image_url, md5, site, file, fname)
-
-    return None
-
-
-def _is_video_url(url: str) -> bool:
-    u = (url or "").lower().split("?")[0].split("#")[0]
-    return u.endswith((".mp4", ".webm"))
-
 
 # =========================
 # PICK IMAGE: dynamic tags + dedup (interaction + persistent)
