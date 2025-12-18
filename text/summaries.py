@@ -1,8 +1,24 @@
 import random
 import discord
 
-def plap_summary(actor: discord.User, target: discord.User, count: int) -> str:
+def plap_summary(actor: discord.User, target: discord.User, count: int, target_total: int | None = None) -> str:
+    """Second-line summary for /plap.
+
+    - `count` is the directed pair count (actor -> target).
+    - `target_total` (optional) is the total times the *target* has been plapped (all actors).
+    """
     time_word = "time" if count == 1 else "times"
+
+    # Sometimes show the target's total, if provided
+    if target_total is not None and target_total >= 1 and random.random() < 0.35:
+        total_word = "time" if target_total == 1 else "times"
+        total_pool = [
+            f"{target.mention} has been plapped a total of {target_total} {total_word}.",
+            f"Total plaps on {target.mention}: {target_total} {total_word}.",
+            f"{target.mention} has been plapped {target_total} {total_word} overall.",
+        ]
+        return random.choice(total_pool)
+
     if count <= 1:
         pool = [
             f"{actor.mention} plapped {target.mention} {count} {time_word}!",
@@ -16,17 +32,18 @@ def plap_summary(actor: discord.User, target: discord.User, count: int) -> str:
         ]
     elif count <= 6:
         pool = [
-            f"{actor.mention} is on a roll — {count} {time_word} on {target.mention}!",
-            f"{count} {time_word} now… {actor.mention} is clearly committed to {target.mention}.",
+            f"{actor.mention} is not subtle — {count} {time_word} on {target.mention}!",
+            f"{count} {time_word} now… {actor.mention} is making a point with {target.mention}.",
             f"{actor.mention} keeps coming back — {count} {time_word} and counting.",
         ]
     else:
         pool = [
-            f"{count} {time_word}. Yeah. {actor.mention} is absolutely not done with {target.mention}.",
+            f"{count} {time_word}. Yeah. {actor.mention} is absolutely locked in on {target.mention}.",
             f"{actor.mention} has lost count — but it’s at least {count} {time_word}.",
             f"{actor.mention} keeps plapping {target.mention}. Nobody’s pretending anymore ({count} {time_word}).",
         ]
     return random.choice(pool)
+
 
 def succ_summary(actor: discord.User, target: discord.User, count: int) -> str:
     time_word = "time" if count == 1 else "times"
