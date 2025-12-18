@@ -35,7 +35,7 @@ class PlapBackView(discord.ui.View):
             except Exception:
                 pass
 
-    @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Refresh (3)", emoji="🔄", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
         ok = await safe_defer(interaction, thinking=True)
         if not ok:
@@ -43,7 +43,7 @@ class PlapBackView(discord.ui.View):
 
         # Only the original actor can reroll their own message
         if interaction.user.id != self.original_actor.id:
-            await interaction.followup.send("Only the sender can reroll 🎲", ephemeral=True)
+            await interaction.followup.send("Only the sender can refresh 🔄", ephemeral=True)
             return
 
         remaining = getattr(self, "rerolls_left", 3)
@@ -75,7 +75,7 @@ class PlapBackView(discord.ui.View):
         if not picked:
             # restore button state
             button.disabled = False
-            button.label = f"Reroll ({remaining})"
+            button.label = f"Refresh ({remaining})"
             try:
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
@@ -100,7 +100,7 @@ class PlapBackView(discord.ui.View):
         self.seen.add(md5)
         self.rerolls_left = remaining - 1
         button.disabled = False
-        button.label = f"Reroll ({self.rerolls_left})"
+        button.label = f"Refresh ({self.rerolls_left})"
 
         line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
             actor=self.original_actor.mention,
