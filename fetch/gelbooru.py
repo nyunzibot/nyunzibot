@@ -11,7 +11,7 @@ log = logging.getLogger("nyunzi")
 # =========================
 # GELBOORU FETCH (JSON) -> (url, md5, site)
 # =========================
-async def fetch_image_gelbooru_old(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_gelbooru_01(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
         return None
 
@@ -110,7 +110,7 @@ async def fetch_image_gelbooru_old(tags: str, avoid_md5s: set[str]) -> tuple[str
 # GELBOORU FETCH (JSON) -> (url, md5, site)
 # NO PID, NO SCORE TIERS, NO LIMIT TIERS
 # =========================
-async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_gelbooru_02(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
         return None
 
@@ -209,5 +209,155 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
 
                 # ✅ Resolve immediately
                 return (url, md5, "gelbooru")
+
+    return None
+
+
+# =========================
+# GELBOORU FETCH (JSON) -> (url, md5, site)
+# limit=1, pid random in [0, count-1]
+# =========================
+async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+    if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
+        return None
+
+    backoffs = [0.0, 1.0, 2.5, 5.0]
+
+    LIMIT = 1
+    MAX_ATTEMPTS = 5
+    # Hard safety clamp so you don't accidentally blast huge pid values forever
+    PID_HARD_CAP = count - 1
+
+    def extract_attrs_count(data) -> int | None:
+        if not isinstance(data, dict):
+            return None
+        attrs = data.get("@attributes")
+        if not isinstance(attrs, dict):
+            return None
+        try:
+            c = int(attrs.get("count", 0))
+            return c if c > 0 else None
+        except Exception:
+            return None
+
+    def extract_single_post(data) -> dict | None:
+        if not isinstance(data, dict):
+            return None
+        posts = data.get("post")
+        if isinstance(posts, list) and posts:
+            return posts[0] if isinstance(posts[0], dict) else None
+        if isinstance(posts, dict):
+            return posts
+        return None
+
+    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+        # ---- Step 1: probe count ----
+        count = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            params_probe = {
+                "limit": LIMIT,
+                "pid": 0,
+                "tags": tags.strip(),
+                "api_key": GELBOORU_API_KEY,
+                "user_id": GELBOORU_USER_ID,
+                "json": 1,
+            }
+
+            try:
+                async with session.get(
+                    GELBOORU_API,
+                    params=params_probe,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                ) as resp:
+                    log.info("[GEL FETCH] count_probe attempt=%s/%s limit=%s pid=%s status=%s",
+                             attempt, MAX_ATTEMPTS, LIMIT, 0, resp.status)
+                    log.info("[GEL FETCH] url=%s", resp.url)
+
+                    if resp.status == 429:
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+                    if resp.status != 200:
+                        continue
+
+                    data_probe = await resp.json(content_type=None)
+                    count = extract_attrs_count(data_probe)
+                    break
+
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                continue
+            except Exception:
+                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                continue
+
+        if not count:
+            log.info("[GEL FETCH] no count available; cannot do pid-in-[0,count) strategy")
+            return None
+
+        # ---- Step 2: choose pid (basically “index”) ----
+        max_pid = min(count - 1, PID_HARD_CAP)
+        if max_pid <= 0:
+            return None
+
+        # We'll try a few random pid picks in case we hit a dead/filtered entry
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            pid = random.randint(0, max_pid)
+
+            params = {
+                "limit": LIMIT,
+                "pid": pid,
+                "tags": tags.strip(),
+                "api_key": GELBOORU_API_KEY,
+                "user_id": GELBOORU_USER_ID,
+                "json": 1,
+            }
+
+            try:
+                async with session.get(
+                    GELBOORU_API,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                ) as resp:
+                    log.info("[GEL FETCH] attempt=%s/%s limit=%s pid=%s status=%s",
+                             attempt, MAX_ATTEMPTS, LIMIT, pid, resp.status)
+                    log.info("[GEL FETCH] url=%s", resp.url)
+
+                    if resp.status == 429:
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+                    if resp.status != 200:
+                        continue
+
+                    data = await resp.json(content_type=None)
+
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                continue
+            except Exception:
+                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                continue
+
+            p = extract_single_post(data)
+            if not p:
+                continue
+
+            url = p.get("file_url")
+            md5 = p.get("md5")
+            if not url or not is_supported_file_url(url):
+                continue
+
+            try:
+                w_i = int(p.get("width")) if p.get("width") is not None else None
+                h_i = int(p.get("height")) if p.get("height") is not None else None
+            except Exception:
+                w_i = None
+                h_i = None
+
+            if not size_ok(w_i, h_i):
+                continue
+            if md5 and md5 in avoid_md5s:
+                continue
+
+            return (url, md5, "gelbooru")
 
     return None
