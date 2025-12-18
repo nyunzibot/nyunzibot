@@ -37,7 +37,7 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction)
+        ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
 
@@ -132,7 +132,7 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction)
+        ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
 
