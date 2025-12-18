@@ -4,6 +4,7 @@ import logging
 from discord import app_commands
 
 from bot.safe_defer import safe_defer
+from bot.notify import send_dm_notify
 from views.plap_view import PlapBackView
 from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS
@@ -70,3 +71,6 @@ def setup(bot: discord.Client):
             msg = await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
 
         view.message = msg
+
+        # DM notify target for better mobile notifications (best-effort)
+        await send_dm_notify("plap", interaction.user, target)

@@ -4,6 +4,7 @@ import logging
 import asyncio  # ✅ added
 
 from bot.safe_defer import safe_defer
+from bot.notify import send_dm_notify
 from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS
 from fetch.pick import pick_image
@@ -193,6 +194,9 @@ class PlapBackView(discord.ui.View):
                 files=[file],
             )
             new_view.message = msg
+
+            # DM notify original actor when someone plaps back (best-effort)
+            await send_dm_notify("plap", interaction.user, self.original_actor)
         except TypeError:
             # fallback for versions that don't accept files=
             try:
@@ -202,6 +206,9 @@ class PlapBackView(discord.ui.View):
                     attachments=[file],
                 )
                 new_view.message = msg
+
+                # DM notify original actor when someone plaps back (best-effort)
+                await send_dm_notify("plap", interaction.user, self.original_actor)
             except Exception:
                 # last resort: keep old message untouched, just send a new one
                 msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
