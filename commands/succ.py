@@ -22,7 +22,7 @@ def setup(bot: discord.Client):
     @app_commands.allowed_installs(users=True, guilds=False)
     async def succ(interaction: discord.Interaction, target: discord.User):
         # ACK FIRST (avoid 10062)
-        ok = await safe_defer(interaction, thinking=True)
+        ok = await safe_defer(interaction, thinking=True, components_thinking=True)
         if not ok:
             return
 

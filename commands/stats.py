@@ -9,7 +9,7 @@ def setup(bot: discord.Client):
     @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
     @app_commands.allowed_installs(users=True, guilds=False)
     async def stats(interaction: discord.Interaction, user: discord.User | None = None):
-        ok = await safe_defer(interaction, thinking=False)
+        ok = await safe_defer(interaction, thinking=True, components_thinking=True)
         if not ok:
             return
 
