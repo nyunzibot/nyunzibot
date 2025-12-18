@@ -17,7 +17,7 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
     quality_strict = []
     focus_strict = []
 
-    k = 2 if len(positives) >= 2 else 1
+    k = 1
     p = random.sample(positives, k=k)
 
     ladders: list[list[str]] = [
