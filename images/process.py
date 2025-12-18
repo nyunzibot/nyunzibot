@@ -42,6 +42,16 @@ async def process_image(url: str, max_attempts: int = 3) -> tuple[discord.File |
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
 
+                    # ✅ NEW: if server provides size, skip large downloads early
+                    clen = resp.content_length
+                    if clen is not None:
+                        if clen > MAX_DOWNLOAD_BYTES:
+                            return (None, None)
+
+                        # ✅ NEW: if it's a video and too large to attach, skip it (no download)
+                        if ext in (".mp4", ".webm") and clen > MAX_DISCORD_BYTES:
+                            return (None, None)
+
                     raw = await resp.read()
         except (aiohttp.ClientError, asyncio.TimeoutError):
             await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
