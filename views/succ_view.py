@@ -178,8 +178,10 @@ class SuccBackView(discord.ui.View):
         except Exception:
             pass
 
-        # CHANGED: for video, send as link; otherwise attach
-        if fname.lower().endswith((".mp4", ".webm")):
-            await interaction.followup.send(embed=full_embed, file=file, view=self, wait=True)
-        else:
-            await interaction.followup.send(embed=full_embed, file=file)
+        # ✅ NEW: create a NEW message with a NEW view (like before)
+        new_view = SuccBackView(interaction.user, self.original_actor)
+        new_view.seen = self.seen
+        new_view.count = self.count
+
+        msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
+        new_view.message = msg
