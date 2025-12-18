@@ -1,6 +1,7 @@
 import random
 import discord
 import logging
+import asyncio  # ✅ added
 
 from bot.safe_defer import safe_defer
 from tags.tag_builder import build_tag_ladder
@@ -36,7 +37,7 @@ class SuccBackView(discord.ui.View):
 
     @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True, components_thinking=True)
+        ok = await safe_defer(interaction)
         if not ok:
             return
 
@@ -49,9 +50,35 @@ class SuccBackView(discord.ui.View):
             await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
             return
 
+        # ✅ loading animation (DM-safe): edit view label
+        button.disabled = True
+        button.label = "Loading."
+        try:
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
+
+        try:
+            await asyncio.sleep(0.6)
+            button.label = "Loading.."
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+
+            await asyncio.sleep(0.6)
+            button.label = "Loading..."
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
+
         tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
+            # restore button state
+            button.disabled = False
+            button.label = f"Reroll ({remaining})"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
@@ -60,11 +87,19 @@ class SuccBackView(discord.ui.View):
         # CHANGED: process_media returns (file, fname)
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
+            # restore button state
+            button.disabled = False
+            button.label = f"Reroll ({remaining})"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
             await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
         self.rerolls_left = remaining - 1
+        button.disabled = False
         button.label = f"Reroll ({self.rerolls_left})"
 
         line = random.choice(SUCC_LINES_INTIMATE).format(actor=self.original_actor.mention, target=self.original_target.mention)
@@ -97,7 +132,7 @@ class SuccBackView(discord.ui.View):
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True, components_thinking=True)
+        ok = await safe_defer(interaction)
         if not ok:
             return
 

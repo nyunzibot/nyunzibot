@@ -1,6 +1,7 @@
 import random
 import discord
 import logging
+import asyncio  # ✅ added
 
 from bot.safe_defer import safe_defer
 from tags.tag_builder import build_tag_ladder
@@ -36,7 +37,7 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Reroll (3)", emoji="🎲", style=discord.ButtonStyle.secondary)
     async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True, components_thinking=True)
+        ok = await safe_defer(interaction)
         if not ok:
             return
 
@@ -50,22 +51,55 @@ class PlapBackView(discord.ui.View):
             await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
             return
 
+        # ✅ loading animation (DM-safe): edit view label
+        button.disabled = True
+        button.label = "Loading."
+        try:
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
+
+        try:
+            await asyncio.sleep(0.6)
+            button.label = "Loading.."
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+
+            await asyncio.sleep(0.6)
+            button.label = "Loading..."
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
+
         tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
+            # restore button state
+            button.disabled = False
+            button.label = f"Reroll ({remaining})"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
         image_url, md5, site = picked
 
-        # CHANGED: process_media returns (file, fname)
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
+            # restore button state
+            button.disabled = False
+            button.label = f"Reroll ({remaining})"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
             await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
         self.rerolls_left = remaining - 1
+        button.disabled = False
         button.label = f"Reroll ({self.rerolls_left})"
 
         line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
@@ -80,12 +114,10 @@ class PlapBackView(discord.ui.View):
         )
         embed.set_author(name=f"{self.original_actor.display_name} used /plap", icon_url=self.original_actor.display_avatar.url)
 
-        # CHANGED: only set embed image for image/gif attachments
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             embed.set_image(url=f"attachment://{fname}")
 
         try:
-            # CHANGED: use attachments=[file] where file is discord.File
             await interaction.followup.edit_message(
                 message_id=interaction.message.id,
                 embed=embed,
@@ -93,7 +125,6 @@ class PlapBackView(discord.ui.View):
                 view=self
             )
         except Exception:
-            # CHANGED: view=self (not view=view)
             if fname.lower().endswith((".mp4", ".webm")):
                 await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
             else:
@@ -101,7 +132,7 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ok = await safe_defer(interaction, thinking=True, components_thinking=True)
+        ok = await safe_defer(interaction)
         if not ok:
             return
 
@@ -117,7 +148,6 @@ class PlapBackView(discord.ui.View):
 
         image_url, md5, site = picked
 
-        # CHANGED: process_media returns (file, fname)
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
@@ -139,7 +169,6 @@ class PlapBackView(discord.ui.View):
         )
         full_embed.set_author(name=f"{interaction.user.display_name} plaps back", icon_url=interaction.user.display_avatar.url)
 
-        # CHANGED: only set embed image for image/gif attachments
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             full_embed.set_image(url=f"attachment://{fname}")
 
@@ -150,7 +179,6 @@ class PlapBackView(discord.ui.View):
         except Exception:
             pass
 
-        # CHANGED: for video, send as link; otherwise attach
         if fname.lower().endswith((".mp4", ".webm")):
             await interaction.followup.send(embed=full_embed, file=file, view=self, wait=True)
         else:
