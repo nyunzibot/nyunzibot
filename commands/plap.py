@@ -58,7 +58,7 @@ def setup(bot: discord.Client):
             # For jpg/gif, embed image attachment works.
             # For mp4/webm, embed.set_image won't display the video; better to send link instead.
             if fname.endswith((".mp4", ".webm")):
-                msg = await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
+                msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
             else:
                 embed.set_image(url=f"attachment://{fname}")
                 msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)

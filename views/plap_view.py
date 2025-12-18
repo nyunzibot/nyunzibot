@@ -95,7 +95,7 @@ class PlapBackView(discord.ui.View):
         except Exception:
             # CHANGED: view=self (not view=view)
             if fname.lower().endswith((".mp4", ".webm")):
-                await interaction.followup.send(content=image_url, embed=embed, view=self)
+                await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
             else:
                 await interaction.followup.send(embed=embed, file=file, view=self)
 
@@ -152,6 +152,6 @@ class PlapBackView(discord.ui.View):
 
         # CHANGED: for video, send as link; otherwise attach
         if fname.lower().endswith((".mp4", ".webm")):
-            await interaction.followup.send(content=image_url, embed=full_embed)
+            await interaction.followup.send(embed=full_embed, file=file, view=self, wait=True)
         else:
             await interaction.followup.send(embed=full_embed, file=file)
