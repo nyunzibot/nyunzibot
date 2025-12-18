@@ -13,9 +13,9 @@ def is_supported_file_url(url: str) -> bool:
     u = (url or "").lower()
     if not u.startswith("http"):
         return False
-    for ext in (".webm", ".mp4", ".gif"):
-        if u.endswith(ext):
-            return False
+    #for ext in (".webm", ".mp4", ".gif"):
+    #    if u.endswith(ext):
+    #        return False
     return True
 
 def size_ok(width: int | None, height: int | None) -> bool:
