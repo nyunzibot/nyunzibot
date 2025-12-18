@@ -5,12 +5,22 @@ import asyncio
 import firebase_admin
 from firebase_admin import credentials, firestore
 
+
 class FirestoreStatsDB:
     def __init__(self):
         self.db = self._init_firestore()
 
     def _init_firestore(self):
-        raw = os.environ["FIREBASE_SERVICE_ACCOUNT_JSON"]
+        raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+
+        if not raw:
+            # Debug helper without leaking secrets
+            firebase_keys = [k for k in os.environ.keys() if k.startswith("FIREBASE_")]
+            raise RuntimeError(
+                "Missing env var FIREBASE_SERVICE_ACCOUNT_JSON in this running service/environment. "
+                f"FIREBASE_* vars present: {firebase_keys}"
+            )
+
         cred = credentials.Certificate(json.loads(raw))
         if not firebase_admin._apps:
             firebase_admin.initialize_app(cred)
@@ -27,8 +37,12 @@ class FirestoreStatsDB:
         def work():
             inc = firestore.Increment(1)
 
-            actor_ref = self.db.collection("stats").document(self._stats_doc_id(action, actor_id))
-            target_ref = self.db.collection("stats").document(self._stats_doc_id(action, target_id))
+            actor_ref = self.db.collection("stats").document(
+                self._stats_doc_id(action, actor_id)
+            )
+            target_ref = self.db.collection("stats").document(
+                self._stats_doc_id(action, target_id)
+            )
 
             actor_updates = {
                 "action": action,
@@ -53,10 +67,22 @@ class FirestoreStatsDB:
 
     async def get_user(self, action: str, user_id: int) -> dict:
         def work():
-            ref = self.db.collection("stats").document(self._stats_doc_id(action, user_id))
+            ref = self.db.collection("stats").document(
+                self._stats_doc_id(action, user_id)
+            )
             snap = ref.get()
+
             if not snap.exists:
-                ref.set({"action": action, "user_id": str(user_id), "given": 0, "received": 0, "backs": 0}, merge=True)
+                ref.set(
+                    {
+                        "action": action,
+                        "user_id": str(user_id),
+                        "given": 0,
+                        "received": 0,
+                        "backs": 0,
+                    },
+                    merge=True,
+                )
                 return {"given": 0, "received": 0, "backs": 0}
 
             d = snap.to_dict() or {}
@@ -72,12 +98,18 @@ class FirestoreStatsDB:
         def work():
             ref = self.db.collection("seen_md5").document(md5)
             # first write wins
-            ref.create({"md5": md5, "site": site, "first_seen": int(time.time())})
+            ref.create(
+                {
+                    "md5": md5,
+                    "site": site,
+                    "first_seen": int(time.time()),
+                }
+            )
 
         try:
             await self._run(work)
         except Exception:
-            # doc already exists (or race) -> ignore
+            # already exists or race condition → ignore
             return
 
     async def load_recent_seen(self, max_age_days: int = 30) -> set[str]:
