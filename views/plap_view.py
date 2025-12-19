@@ -131,8 +131,8 @@ class PlapBackView(discord.ui.View):
         summary = plap_summary(self.original_actor, self.original_target, count, target_total=target_total)
 
         embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**",
-            color=discord.Color.from_rgb(255, 182, 193),
+            description=f"{line}\n\n{summary}",
+            color=discord.Color(0xFF9E80),
         )
         embed.set_footer(text=f"source: {site}")
         embed.set_author(name=f"{self.original_actor.display_name} used /plap", icon_url=self.original_actor.display_avatar.url)
@@ -153,7 +153,7 @@ class PlapBackView(discord.ui.View):
             else:
                 await interaction.followup.send(embed=embed, file=file, view=self)
 
-    @discord.ui.button(label="Plap back", emoji="💢", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Plap back", emoji="💢", style=discord.ButtonStyle.primary)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
         # ✅ gate FIRST (so we don't defer/respond for someone who shouldn't use it)
         if interaction.user.id != self.original_target.id:
@@ -208,8 +208,8 @@ class PlapBackView(discord.ui.View):
         summary = plap_summary(interaction.user, self.original_actor, count, target_total=target_total)
 
         full_embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**",
-            color=discord.Color.from_rgb(173, 216, 230),
+            description=f"{line}\n\n{summary}",
+            color=discord.Color(0xFF9E80),
         )
         full_embed.set_footer(text=f"source: {site}")
         full_embed.set_author(name=f"{interaction.user.display_name} plaps back", icon_url=interaction.user.display_avatar.url)

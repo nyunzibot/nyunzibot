@@ -127,8 +127,8 @@ class SuccBackView(discord.ui.View):
         summary = succ_summary(self.original_actor, self.original_target, count)
 
         embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**",
-            color=discord.Color.from_rgb(199, 21, 133),
+            description=f"{line}\n\n{summary}",
+            color=discord.Color(0xFFA6C9),
         )
         embed.set_footer(text=f"source: {site}")
         embed.set_author(
@@ -152,7 +152,7 @@ class SuccBackView(discord.ui.View):
             else:
                 await interaction.followup.send(embed=embed, file=file, view=self)
 
-    @discord.ui.button(label="Succ back", emoji="🍬", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Succ back", emoji="🍬", style=discord.ButtonStyle.primary)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
         # ✅ gate FIRST (before defer)
         if interaction.user.id != self.original_target.id:
@@ -205,8 +205,8 @@ class SuccBackView(discord.ui.View):
         summary = succ_summary(interaction.user, self.original_actor, count)
 
         full_embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**",
-            color=discord.Color.from_rgb(255, 105, 180),
+            description=f"{line}\n\n{summary}",
+            color=discord.Color(0xFFA6C9),
         )
         full_embed.set_footer(text=f"source: {site}")
         full_embed.set_author(
