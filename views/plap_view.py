@@ -144,20 +144,20 @@ class PlapBackView(discord.ui.View):
             return
 
         if interaction.user.id != self.original_target.id:
-            await interaction.followup.send("Not for you 😤", ephemeral=True)
+            await interaction.response.send_message("Not for you 😤", ephemeral=True)
             return
 
         tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
-            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            await interaction.response.send_message("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
         image_url, md5, site = picked
 
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
-            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
+            await interaction.response.send_message("Media failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
