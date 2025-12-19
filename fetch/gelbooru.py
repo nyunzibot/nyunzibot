@@ -217,7 +217,7 @@ async def fetch_image_gelbooru_02(tags: str, avoid_md5s: set[str]) -> tuple[str,
 # GELBOORU FETCH (JSON) -> (url, md5, site)
 # limit=1, pid random in [0, count-1]
 # =========================
-async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_gelbooru_03(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
         return None
 
@@ -360,5 +360,182 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                 continue
 
             return (url, md5, "gelbooru")
+
+    return None
+
+
+# =========================
+# GELBOORU FETCH (JSON) -> (url, md5, site)
+# limit=1, pid random in [0, count-1], SCORE TIERS
+# =========================
+async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+    if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
+        return None
+
+    backoffs = [0.0, 1.0, 2.5, 5.0]
+
+    LIMIT = 1
+    MAX_ATTEMPTS = 5
+    # Hard safety clamp so you don't accidentally blast huge pid values forever
+    PID_HARD_CAP = 10_000
+
+    # Score tiers (high -> low). Last None means "no score filter".
+    SCORE_TIERS: list[int | None] = [50, 25, 10, 5, None]
+
+    def extract_attrs_count(data) -> int | None:
+        if not isinstance(data, dict):
+            return None
+        attrs = data.get("@attributes")
+        if not isinstance(attrs, dict):
+            return None
+        try:
+            c = int(attrs.get("count", 0))
+            return c if c > 0 else None
+        except Exception:
+            return None
+
+    def extract_single_post(data) -> dict | None:
+        if not isinstance(data, dict):
+            return None
+        posts = data.get("post")
+        if isinstance(posts, list) and posts:
+            return posts[0] if isinstance(posts[0], dict) else None
+        if isinstance(posts, dict):
+            return posts
+        return None
+
+    def with_score_filter(base_tags: str, min_score: int | None) -> str:
+        t = base_tags.strip()
+        if min_score is None:
+            return t
+        # Gelbooru supports "score:>=N" in tags.
+        # Keep it simple: append the score constraint.
+        return f"{t} score:>={min_score}".strip()
+
+    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+        for tier in SCORE_TIERS:
+            tier_tags = with_score_filter(tags, tier)
+            tier_label = f">={tier}" if tier is not None else "none"
+
+            # ---- Step 1: probe count for this tier ----
+            count = None
+            tier_pid_cap = PID_HARD_CAP
+
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                params_probe = {
+                    "limit": LIMIT,
+                    "pid": 0,
+                    "tags": tier_tags,
+                    "api_key": GELBOORU_API_KEY,
+                    "user_id": GELBOORU_USER_ID,
+                    "json": 1,
+                }
+
+                try:
+                    async with session.get(
+                        GELBOORU_API,
+                        params=params_probe,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        log.info(
+                            "[GEL FETCH] tier=%s count_probe attempt=%s/%s limit=%s pid=%s status=%s",
+                            tier_label, attempt, MAX_ATTEMPTS, LIMIT, 0, resp.status
+                        )
+                        log.info("[GEL FETCH] url=%s", resp.url)
+
+                        if resp.status == 429:
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+                        if resp.status != 200:
+                            continue
+
+                        data_probe = await resp.json(content_type=None)
+                        count = extract_attrs_count(data_probe)
+                        if count:
+                            tier_pid_cap = count - 1
+                        break
+
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+                except Exception:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+
+            if not count:
+                log.info("[GEL FETCH] tier=%s no count available; trying next tier", tier_label)
+                continue
+
+            # ---- Step 2: choose pid (basically “index”) ----
+            max_pid = min(count - 1, tier_pid_cap)
+            if max_pid <= 0:
+                log.info("[GEL FETCH] tier=%s max_pid<=0; trying next tier", tier_label)
+                continue
+
+            # We'll try a few random pid picks in case we hit a dead/filtered entry
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                pid = random.randint(0, max_pid)
+
+                params = {
+                    "limit": LIMIT,
+                    "pid": pid,
+                    "tags": tier_tags,
+                    "api_key": GELBOORU_API_KEY,
+                    "user_id": GELBOORU_USER_ID,
+                    "json": 1,
+                }
+
+                try:
+                    async with session.get(
+                        GELBOORU_API,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        log.info(
+                            "[GEL FETCH] tier=%s attempt=%s/%s limit=%s pid=%s status=%s",
+                            tier_label, attempt, MAX_ATTEMPTS, LIMIT, pid, resp.status
+                        )
+                        log.info("[GEL FETCH] url=%s", resp.url)
+
+                        if resp.status == 429:
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+                        if resp.status != 200:
+                            continue
+
+                        data = await resp.json(content_type=None)
+
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+                except Exception:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+
+                p = extract_single_post(data)
+                if not p:
+                    continue
+
+                url = p.get("file_url")
+                md5 = p.get("md5")
+                if not url or not is_supported_file_url(url):
+                    continue
+
+                try:
+                    w_i = int(p.get("width")) if p.get("width") is not None else None
+                    h_i = int(p.get("height")) if p.get("height") is not None else None
+                except Exception:
+                    w_i = None
+                    h_i = None
+
+                if not size_ok(w_i, h_i):
+                    continue
+                if md5 and md5 in avoid_md5s:
+                    continue
+
+                return (url, md5, "gelbooru")
+
+            # If we get here, this tier had count but our random picks were unusable.
+            log.info("[GEL FETCH] tier=%s exhausted attempts; trying next tier", tier_label)
 
     return None
