@@ -20,7 +20,7 @@ def setup(bot: discord.Client):
         embed = discord.Embed(
             title="📊 Stats",
             description=(
-                f"**User:** {user.mention}\n\n"
+                f"**User:** **{user.display_name}**\n\n"
                 f"**👋 Plap**\n"
                 f"• **Given:** {pl['given']}\n"
                 f"• **Received:** {pl['received']}\n"

@@ -122,8 +122,8 @@ class PlapBackView(discord.ui.View):
         button.label = f"Refresh ({self.rerolls_left})"
 
         line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
-            actor=self.original_actor.mention,
-            target=self.original_target.mention
+            actor=f"**{self.original_actor.display_name}**",
+            target=f"**{self.original_target.display_name}**"
         )
         count = await STATS_DB.get_pair_count("plap", self.original_actor.id, self.original_target.id)
         totals = await STATS_DB.get_user("plap", self.original_target.id)
@@ -131,9 +131,10 @@ class PlapBackView(discord.ui.View):
         summary = plap_summary(self.original_actor, self.original_target, count, target_total=target_total)
 
         embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(255, 182, 193),
         )
+        embed.set_footer(text=f"source: {site}")
         embed.set_author(name=f"{self.original_actor.display_name} used /plap", icon_url=self.original_actor.display_avatar.url)
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
@@ -152,7 +153,7 @@ class PlapBackView(discord.ui.View):
             else:
                 await interaction.followup.send(embed=embed, file=file, view=self)
 
-    @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Plap back", emoji="💢", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
         # ✅ gate FIRST (so we don't defer/respond for someone who shouldn't use it)
         if interaction.user.id != self.original_target.id:
@@ -201,15 +202,16 @@ class PlapBackView(discord.ui.View):
         self.count = count
 
         line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(
-            actor=interaction.user.mention,
-            target=self.original_actor.mention
+            actor=f"**{interaction.user.display_name}**",
+            target=f"**{self.original_actor.display_name}**"
         )
         summary = plap_summary(interaction.user, self.original_actor, count, target_total=target_total)
 
         full_embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(173, 216, 230),
         )
+        full_embed.set_footer(text=f"source: {site}")
         full_embed.set_author(name=f"{interaction.user.display_name} plaps back", icon_url=interaction.user.display_avatar.url)
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):

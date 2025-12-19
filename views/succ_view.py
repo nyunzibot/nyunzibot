@@ -120,16 +120,17 @@ class SuccBackView(discord.ui.View):
         button.label = f"Refresh ({self.rerolls_left})"
 
         line = random.choice(SUCC_LINES_INTIMATE).format(
-            actor=self.original_actor.mention,
-            target=self.original_target.mention
+            actor=f"**{self.original_actor.display_name}**",
+            target=f"**{self.original_target.display_name}**"
         )
         count = await STATS_DB.get_pair_count("succ", self.original_actor.id, self.original_target.id)
         summary = succ_summary(self.original_actor, self.original_target, count)
 
         embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(199, 21, 133),
         )
+        embed.set_footer(text=f"source: {site}")
         embed.set_author(
             name=f"{self.original_actor.display_name} used /succ",
             icon_url=self.original_actor.display_avatar.url
@@ -151,7 +152,7 @@ class SuccBackView(discord.ui.View):
             else:
                 await interaction.followup.send(embed=embed, file=file, view=self)
 
-    @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Succ back", emoji="🍬", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
         # ✅ gate FIRST (before defer)
         if interaction.user.id != self.original_target.id:
@@ -198,15 +199,16 @@ class SuccBackView(discord.ui.View):
         self.count = count
 
         line = random.choice(SUCC_LINES_INTIMATE).format(
-            actor=interaction.user.mention,
-            target=self.original_actor.mention
+            actor=f"**{interaction.user.display_name}**",
+            target=f"**{self.original_actor.display_name}**"
         )
         summary = succ_summary(interaction.user, self.original_actor, count)
 
         full_embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(255, 105, 180),
         )
+        full_embed.set_footer(text=f"source: {site}")
         full_embed.set_author(
             name=f"{interaction.user.display_name} succs back",
             icon_url=interaction.user.display_avatar.url

@@ -98,13 +98,14 @@ def setup(bot: discord.Client):
         await STATS_DB.record_action("succ", interaction.user.id, target.id, is_back=False)
         count = await STATS_DB.get_pair_count("succ", interaction.user.id, target.id)
 
-        line = random.choice(SUCC_LINES_INTIMATE).format(actor=interaction.user.mention, target=target.mention)
+        line = random.choice(SUCC_LINES_INTIMATE).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**")
         summary = succ_summary(interaction.user, target, count)
 
         embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(199, 21, 133),
         )
+        embed.set_footer(text=f"source: {site}")
         embed.set_author(name=f"{interaction.user.display_name} used /succ", icon_url=interaction.user.display_avatar.url)
 
         if file and fname:

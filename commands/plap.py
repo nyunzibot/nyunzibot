@@ -100,13 +100,14 @@ def setup(bot: discord.Client):
         totals = await STATS_DB.get_user("plap", target.id)
         target_total = int(totals.get("received", 0))
 
-        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=interaction.user.mention, target=target.mention)
+        line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**")
         summary = plap_summary(interaction.user, target, count, target_total=target_total)
 
         embed = discord.Embed(
-            description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
+            description=f"{line}\n\n**{summary}**",
             color=discord.Color.from_rgb(255, 182, 193),
         )
+        embed.set_footer(text=f"source: {site}")
         embed.set_author(name=f"{interaction.user.display_name} used /plap", icon_url=interaction.user.display_avatar.url)
 
         if file and fname:
