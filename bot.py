@@ -36,17 +36,17 @@ def main():
             await bot.tree.sync()  # global sync for DMs
         except discord.errors.HTTPException as e:
             if e.status == 429:
-                log.warning("Rate limited during command sync (429). Skipping sync assuming commands are already registered.")
+                log.info("Rate limited during command sync (429). Skipping sync assuming commands are already registered.")
                 if e.response is not None and hasattr(e.response, 'headers'):
                     headers = {
                         k: e.response.headers.get(k)
                         for k in ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "X-RateLimit-Reset-After", "X-RateLimit-Bucket"]
                     }
-                    log.warning("Rate Limit Headers: %s", headers)
+                    log.info("Rate Limit Headers: %s", headers)
             else:
-                log.error("Failed to sync commands: %s", e)
+                log.info("Failed to sync commands: %s", e)
         except Exception as e:
-            log.error("Unexpected error during sync: %s", e)
+            log.info("Unexpected error during sync: %s", e)
         log.info("Logged in as %s", bot.user)
         log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
 
