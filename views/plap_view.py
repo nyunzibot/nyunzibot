@@ -1,7 +1,7 @@
 import random
 import discord
 import logging
-import asyncio  # ✅ added
+import asyncio
 
 from bot.safe_defer import safe_defer
 from bot.notify import send_dm_notify
@@ -15,6 +15,7 @@ from text.plap_lines import PLAP_LINES_INTIMATE_NATURAL
 from text.summaries import plap_summary
 
 log = logging.getLogger("nyunzi")
+
 
 class PlapBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
@@ -42,7 +43,6 @@ class PlapBackView(discord.ui.View):
         if not ok:
             return
 
-        # Only the original actor can reroll their own message
         if interaction.user.id != self.original_actor.id:
             await interaction.followup.send("Only the sender can refresh 🔄", ephemeral=True)
             return
@@ -52,7 +52,6 @@ class PlapBackView(discord.ui.View):
             await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
             return
 
-        # ✅ loading animation (DM-safe): edit view label
         button.disabled = True
         button.label = "Loading."
         try:
@@ -74,7 +73,6 @@ class PlapBackView(discord.ui.View):
         tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
-            # restore button state
             button.disabled = False
             button.label = f"Refresh ({remaining})"
             try:
@@ -85,10 +83,8 @@ class PlapBackView(discord.ui.View):
             return
 
         image_url, md5, site = picked
-
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
-            # restore button state
             button.disabled = False
             button.label = f"Refresh ({remaining})"
             try:
@@ -116,7 +112,10 @@ class PlapBackView(discord.ui.View):
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
             color=discord.Color.from_rgb(255, 182, 193),
         )
-        embed.set_author(name=f"{self.original_actor.display_name} used /plap", icon_url=self.original_actor.display_avatar.url)
+        embed.set_author(
+            name=f"{self.original_actor.display_name} used /plap",
+            icon_url=self.original_actor.display_avatar.url
+        )
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             embed.set_image(url=f"attachment://{fname}")
@@ -129,30 +128,30 @@ class PlapBackView(discord.ui.View):
                 view=self
             )
         except Exception:
-            if fname.lower().endswith((".mp4", ".webm")):
-                await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
-            else:
-                await interaction.followup.send(embed=embed, file=file, view=self)
+            await interaction.followup.send(embed=embed, file=file, view=self)
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ✅ gate FIRST (so we don't defer/respond for someone who shouldn't use it)
         if interaction.user.id != self.original_target.id:
-            try:
-                if interaction.response.is_done():
-                    await interaction.followup.send("Not for you 😤", ephemeral=True)
-                else:
-                    await interaction.response.send_message("Not for you 😤", ephemeral=True)
-            except discord.InteractionResponded:
+            if interaction.response.is_done():
                 await interaction.followup.send("Not for you 😤", ephemeral=True)
+            else:
+                await interaction.response.send_message("Not for you 😤", ephemeral=True)
             return
 
-        # ✅ show thinking bubble (we will turn THIS into the new message)
+        if not interaction.response.is_done():
+            await interaction.response.defer(thinking=True)
+
+        # 🔹 UPDATE FIRST MESSAGE BUTTON → "Plapped" (disabled)
+        button.disabled = True
+        button.label = "Plapped"
         try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(thinking=True)
+            await interaction.followup.edit_message(
+                message_id=interaction.message.id,
+                view=self
+            )
         except Exception:
-            return
+            pass
 
         tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
@@ -161,7 +160,6 @@ class PlapBackView(discord.ui.View):
             return
 
         image_url, md5, site = picked
-
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
@@ -184,39 +182,26 @@ class PlapBackView(discord.ui.View):
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
             color=discord.Color.from_rgb(173, 216, 230),
         )
-        full_embed.set_author(name=f"{interaction.user.display_name} plaps back", icon_url=interaction.user.display_avatar.url)
+        full_embed.set_author(
+            name=f"{interaction.user.display_name} plaps back",
+            icon_url=interaction.user.display_avatar.url
+        )
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             full_embed.set_image(url=f"attachment://{fname}")
 
-        # ✅ NEW: the "thinking..." message becomes the new message, with a NEW view
         new_view = PlapBackView(interaction.user, self.original_actor)
         new_view.seen = self.seen
         new_view.count = self.count
 
-        try:
-            msg = await interaction.edit_original_response(
-                embed=full_embed,
-                view=new_view,
-                files=[file],
-            )
-            new_view.message = msg
+        # 🔹 UPDATE SECOND MESSAGE BUTTON → "Plap again"
+        for item in new_view.children:
+            if isinstance(item, discord.ui.Button) and item.label == "Plap back":
+                item.label = "Plap again"
 
-            # DM notify original actor when someone plaps back (best-effort)
-            #await send_dm_notify("plap", interaction.user, self.original_actor)
-        except TypeError:
-            # fallback for versions that don't accept files=
-            try:
-                msg = await interaction.edit_original_response(
-                    embed=full_embed,
-                    view=new_view,
-                    attachments=[file],
-                )
-                new_view.message = msg
-
-                # DM notify original actor when someone plaps back (best-effort)
-                #await send_dm_notify("plap", interaction.user, self.original_actor)
-            except Exception:
-                # last resort: keep old message untouched, just send a new one
-                msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
-                new_view.message = msg
+        msg = await interaction.edit_original_response(
+            embed=full_embed,
+            view=new_view,
+            files=[file],
+        )
+        new_view.message = msg
