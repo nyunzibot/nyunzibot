@@ -193,7 +193,7 @@ async def fetch_image_rule34_02(tags: str, avoid_md5s: set[str]) -> tuple[str, s
 # RULE34 FETCH (XML) -> (url, md5, site)
 # limit=1, pid random in [0, count-1]
 # =========================
-async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_rule34_03(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if not (RULE34_API_KEY and RULE34_USER_ID):
         return None
 
@@ -332,5 +332,174 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                 continue
 
             return (url, md5, "rule34")
+
+    return None
+
+
+
+# =========================
+# RULE34 FETCH (XML) -> (url, md5, site)
+# limit=1, pid random in [0, count-1]
+# WITH SCORE TIERS (high -> low -> none)
+# =========================
+async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+    if not (RULE34_API_KEY and RULE34_USER_ID):
+        return None
+
+    backoffs = [0.0, 1.0, 2.5, 5.0]
+
+    LIMIT = 1
+    MAX_ATTEMPTS = 5
+    PID_HARD_CAP = 200_000  # safety clamp (optional, but recommended)
+
+    # Score tiers (high -> low). Last None means "no score filter".
+    SCORE_TIERS: list[int | None] = [500, 250, 100, 50, None]
+
+    def with_score_filter(base_tags: str, min_score: int | None) -> str:
+        t = base_tags.strip()
+        if min_score is None:
+            return t
+        # Rule34 supports score tag constraints like "score:>=N"
+        return f"{t} score:>={min_score}".strip()
+
+    def extract_count_from_root(root: ET.Element) -> int | None:
+        # <posts count="135400" offset="777">
+        try:
+            c = int(root.attrib.get("count", "0"))
+            return c if c > 0 else None
+        except Exception:
+            return None
+
+    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
+        for tier in SCORE_TIERS:
+            tier_tags = with_score_filter(tags, tier)
+            tier_label = f">={tier}" if tier is not None else "none"
+
+            # ---- Step 1: probe count (pid=0) for this tier ----
+            count: int | None = None
+            tier_pid_cap = PID_HARD_CAP
+
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                params_probe = {
+                    "limit": LIMIT,
+                    "pid": 0,
+                    "tags": tier_tags,
+                    "api_key": RULE34_API_KEY,
+                    "user_id": RULE34_USER_ID,
+                }
+
+                try:
+                    async with session.get(
+                        RULE34_API,
+                        params=params_probe,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        log.info("[R34 FETCH] tier=%s count_probe attempt=%s/%s limit=%s pid=%s status=%s",
+                                 tier_label, attempt, MAX_ATTEMPTS, LIMIT, 0, resp.status)
+                        log.info("[R34 FETCH] url=%s", resp.url)
+
+                        if resp.status == 429:
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+                        if resp.status != 200:
+                            continue
+
+                        xml0 = await resp.text()
+
+                    try:
+                        root0 = ET.fromstring(xml0 or "")
+                    except ET.ParseError as e:
+                        log.warning("[R34 FETCH] tier=%s count_probe XML parse error: %s", tier_label, e)
+                        continue
+
+                    count = extract_count_from_root(root0)
+                    if count:
+                        # keep safety clamp, but also don't exceed count-1
+                        tier_pid_cap = min(tier_pid_cap, count - 1)
+                    break
+
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+                except Exception:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+
+            if not count:
+                log.info("[R34 FETCH] tier=%s no count available; trying next tier", tier_label)
+                continue
+
+            max_pid = min(count - 1, tier_pid_cap)
+            if max_pid <= 0:
+                log.info("[R34 FETCH] tier=%s max_pid<=0; trying next tier", tier_label)
+                continue
+
+            # ---- Step 2: fetch random pid pages (limit=1) for this tier ----
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                pid = random.randint(0, max_pid)
+
+                params = {
+                    "limit": LIMIT,
+                    "pid": pid,
+                    "tags": tier_tags,
+                    "api_key": RULE34_API_KEY,
+                    "user_id": RULE34_USER_ID,
+                }
+
+                try:
+                    async with session.get(
+                        RULE34_API,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=20),
+                    ) as resp:
+                        log.info("[R34 FETCH] tier=%s attempt=%s/%s limit=%s pid=%s status=%s",
+                                 tier_label, attempt, MAX_ATTEMPTS, LIMIT, pid, resp.status)
+                        log.info("[R34 FETCH] url=%s", resp.url)
+
+                        if resp.status == 429:
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+                        if resp.status != 200:
+                            continue
+
+                        xml = await resp.text()
+
+                except (aiohttp.ClientError, asyncio.TimeoutError):
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+                except Exception:
+                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    continue
+
+                try:
+                    root = ET.fromstring(xml or "")
+                except ET.ParseError as e:
+                    log.warning("[R34 FETCH] tier=%s XML parse error: %s", tier_label, e)
+                    continue
+
+                post = root.find("post")
+                if post is None:
+                    continue
+
+                url = post.attrib.get("file_url")
+                md5 = post.attrib.get("md5")
+                if not url or not is_supported_file_url(url):
+                    continue
+
+                try:
+                    w_i = int(post.attrib.get("width")) if post.attrib.get("width") else None
+                    h_i = int(post.attrib.get("height")) if post.attrib.get("height") else None
+                except Exception:
+                    w_i = None
+                    h_i = None
+
+                if not size_ok(w_i, h_i):
+                    continue
+                if md5 and md5 in avoid_md5s:
+                    continue
+
+                return (url, md5, "rule34")
+
+            log.info("[R34 FETCH] tier=%s exhausted attempts; trying next tier", tier_label)
 
     return None
