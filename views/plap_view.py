@@ -6,7 +6,7 @@ import asyncio  # ✅ added
 from bot.safe_defer import safe_defer
 from bot.notify import send_dm_notify
 from tags.tag_builder import build_tag_ladder
-from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS
+from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS, NEGATIVE_TAGS
 from fetch.pick import pick_image
 from images.process import process_image
 from db.stats import InteractionSeen
@@ -17,13 +17,31 @@ from text.summaries import plap_summary
 log = logging.getLogger("nyunzi")
 
 class PlapBackView(discord.ui.View):
-    def __init__(self, original_actor: discord.User, original_target: discord.User):
+    def __init__(self, original_actor: discord.User, original_target: discord.User, extra_tags: str = ""):
         super().__init__(timeout=3600)
         self.original_actor = original_actor
         self.original_target = original_target
+        self.extra_tags = " ".join((extra_tags or "").split()).strip()
         self.count = 1
         self.message: discord.Message | None = None
         self.seen = InteractionSeen(original_actor.id, original_target.id)
+
+    def _apply_extra_to_ladder(self, ladder: list[str]) -> list[str]:
+        """Inject extra tags before NEGATIVE_TAGS suffix (validated at command entry)."""
+        if not self.extra_tags:
+            return ladder
+        neg_suffix = (NEGATIVE_TAGS or "").strip()
+        out: list[str] = []
+        for s in ladder:
+            s = (s or "").strip()
+            if not s:
+                continue
+            if neg_suffix and s.endswith(neg_suffix):
+                base = s[: -len(neg_suffix)].rstrip()
+                out.append(f"{base} {self.extra_tags} {neg_suffix}".strip())
+            else:
+                out.append(f"{s} {self.extra_tags}".strip())
+        return out
 
     async def on_timeout(self):
         for item in self.children:
@@ -71,7 +89,7 @@ class PlapBackView(discord.ui.View):
         except Exception:
             pass
 
-        tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
+        tags = self._apply_extra_to_ladder(build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS))
         picked = await pick_image(tags, self.seen)
         if not picked:
             # restore button state
@@ -162,7 +180,7 @@ class PlapBackView(discord.ui.View):
         except Exception:
             pass
 
-        tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
+        tags = self._apply_extra_to_ladder(build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS))
         picked = await pick_image(tags, self.seen)
         if not picked:
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
@@ -198,7 +216,7 @@ class PlapBackView(discord.ui.View):
             full_embed.set_image(url=f"attachment://{fname}")
 
         # ✅ NEW: the "thinking..." message becomes the new message, with a NEW view
-        new_view = PlapBackView(interaction.user, self.original_actor)
+        new_view = PlapBackView(interaction.user, self.original_actor, extra_tags=self.extra_tags)
         new_view.seen = self.seen
         new_view.count = self.count
 
