@@ -90,7 +90,7 @@ class PlapBackView(discord.ui.View):
         if not file or not fname:
             # restore button state
             button.disabled = False
-            button.label = f"Reroll ({remaining})"
+            button.label = f"Refresh ({remaining})"
             try:
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:

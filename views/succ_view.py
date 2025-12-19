@@ -101,7 +101,7 @@ class SuccBackView(discord.ui.View):
         self.seen.add(md5)
         self.rerolls_left = remaining - 1
         button.disabled = False
-        button.label = f"Reroll ({self.rerolls_left})"
+        button.label = f"Refresh ({self.rerolls_left})"
 
         line = random.choice(SUCC_LINES_INTIMATE).format(actor=self.original_actor.mention, target=self.original_target.mention)
         count = await STATS_DB.get_pair_count("succ", self.original_actor.id, self.original_target.id)
