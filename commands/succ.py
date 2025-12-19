@@ -102,10 +102,9 @@ def setup(bot: discord.Client):
         summary = succ_summary(interaction.user, target, count)
 
         embed = discord.Embed(
-            description=f"{line}\n\n{summary}",
+            description=f"{line}\n\n{summary}\n\n`source: {site}`",
             color=discord.Color(0xFFA6C9),
         )
-        embed.set_footer(text=f"source: {site}")
         embed.set_author(name=f"{interaction.user.display_name} used /succ", icon_url=interaction.user.display_avatar.url)
 
         if file and fname:
