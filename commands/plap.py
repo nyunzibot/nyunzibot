@@ -73,4 +73,4 @@ def setup(bot: discord.Client):
         view.message = msg
 
         # DM notify target for better mobile notifications (best-effort)
-        await send_dm_notify("plap", interaction.user, target)
+        #await send_dm_notify("plap", interaction.user, target)
