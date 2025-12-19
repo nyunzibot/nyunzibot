@@ -154,6 +154,14 @@ class PlapBackView(discord.ui.View):
         except Exception:
             return
 
+        # ✅ FIRST message: "Plap back" -> "Plapped" (disabled)
+        button.disabled = True
+        button.label = "Plapped"
+        try:
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
+
         tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
@@ -193,6 +201,11 @@ class PlapBackView(discord.ui.View):
         new_view = PlapBackView(interaction.user, self.original_actor)
         new_view.seen = self.seen
         new_view.count = self.count
+
+        # ✅ SECOND message: "Plap back" -> "Plap again" (enabled)
+        for item in new_view.children:
+            if isinstance(item, discord.ui.Button) and item.label == "Plap back":
+                item.label = "Plap again"
 
         try:
             msg = await interaction.edit_original_response(
