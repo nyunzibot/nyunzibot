@@ -380,7 +380,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
     PID_HARD_CAP = 10_000
 
     # Score tiers (high -> low). Last None means "no score filter".
-    SCORE_TIERS: list[int | None] = [50, 25, 10, 5, None]
+    SCORE_TIERS: list[int | None] = [500, 250, 100, 50, None]
 
     def extract_attrs_count(data) -> int | None:
         if not isinstance(data, dict):
