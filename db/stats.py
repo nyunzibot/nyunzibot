@@ -116,8 +116,12 @@ class StatsDB:
 # PER-INTERACTION DEDUP
 # =========================
 class InteractionSeen:
-    def __init__(self):
+    def __init__(self, actor_id: int | None = None, target_id: int | None = None):
+        # Per-interaction/session dedup (in-memory)
         self.md5s: set[str] = set()
+        # Optional context so pickers can do persistent per-pair dedup
+        self.actor_id: int | None = actor_id
+        self.target_id: int | None = target_id
 
     def add(self, md5: str | None):
         if md5:

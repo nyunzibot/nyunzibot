@@ -47,6 +47,64 @@ class FirestoreStatsDB:
     def _pair_field(action: str) -> str:
         return f"{action}_count"
 
+    # -------------------------
+    # Per-pair persistent seen
+    # -------------------------
+    @staticmethod
+    def _seen_pair_doc_id(user_a: int, user_b: int) -> str:
+        # Unordered pair: (A,B) is same as (B,A)
+        lo, hi = (user_a, user_b) if user_a < user_b else (user_b, user_a)
+        return f"{lo}_{hi}"
+
+    async def load_pair_seen(self, user_a: int, user_b: int) -> list[str]:
+        """Return rolling md5 list (oldest -> newest) for this unordered pair."""
+        def work():
+            ref = self.db.collection("pair_seen").document(self._seen_pair_doc_id(user_a, user_b))
+            snap = ref.get()
+            if not snap.exists:
+                return []
+            d = snap.to_dict() or {}
+            md5s = d.get("md5s") or []
+            return list(md5s)
+
+        return await self._run(work)
+
+    async def add_pair_seen(self, user_a: int, user_b: int, md5: str, site: str | None = None, max_entries: int = 1000):
+        """Atomically add md5 to the pair's rolling list (max_entries, drop oldest)."""
+        def work():
+            docref = self.db.collection("pair_seen").document(self._seen_pair_doc_id(user_a, user_b))
+
+            @firestore.transactional
+            def txn_update(txn: firestore.Transaction):
+                snap = docref.get(transaction=txn)
+                if snap.exists:
+                    d = snap.to_dict() or {}
+                    md5s = list(d.get("md5s") or [])
+                else:
+                    md5s = []
+
+                # Move-to-end if already present (keeps "recent" ordering clean)
+                if md5 in md5s:
+                    try:
+                        md5s.remove(md5)
+                    except ValueError:
+                        pass
+                md5s.append(md5)
+
+                # Trim oldest beyond max_entries
+                if len(md5s) > max_entries:
+                    md5s = md5s[-max_entries:]
+
+                data = {"md5s": md5s, "updated_at": firestore.SERVER_TIMESTAMP}
+                if site:
+                    data["last_site"] = site
+                txn.set(docref, data, merge=True)
+
+            txn = self.db.transaction()
+            txn_update(txn)
+
+        await self._run(work)
+
     async def record_action(self, action: str, actor_id: int, target_id: int, is_back: bool):
         """
         Records:

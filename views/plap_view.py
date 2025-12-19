@@ -23,7 +23,7 @@ class PlapBackView(discord.ui.View):
         self.original_target = original_target
         self.count = 1
         self.message: discord.Message | None = None
-        self.seen = InteractionSeen()
+        self.seen = InteractionSeen(original_actor.id, original_target.id)
 
     async def on_timeout(self):
         for item in self.children:

@@ -42,8 +42,21 @@ def _is_video_url(url: str) -> bool:
 # PICK IMAGE: dynamic tags + dedup (interaction + persistent)
 # =========================
 async def pick_image(tags: str | list[str], interaction_seen: InteractionSeen) -> tuple[str, str | None, str] | None:
-    recent_seen = await STATS_DB.load_recent_seen(max_age_days=30)
-    avoid = set(recent_seen) | set(interaction_seen.md5s)
+    # Persistent dedup is per unordered user-pair (Firestore pair_seen), not global.
+    # We keep per-interaction dedup in memory via InteractionSeen.md5s.
+    md5s_in_memory = getattr(interaction_seen, "md5s", None)
+    avoid = set(md5s_in_memory) if md5s_in_memory is not None else set(interaction_seen or [])
+
+    # If InteractionSeen carries pair context, pull the pair's rolling md5 list.
+    actor_id = getattr(interaction_seen, "actor_id", None)
+    target_id = getattr(interaction_seen, "target_id", None)
+    if isinstance(actor_id, int) and isinstance(target_id, int):
+        try:
+            pair_md5s = await STATS_DB.load_pair_seen(actor_id, target_id)
+            avoid |= set(pair_md5s)
+        except Exception:
+            # If Firestore is unavailable for any reason, we still run with in-memory dedup.
+            pass
 
     tag_list = [tags] if isinstance(tags, str) else list(tags)
 
@@ -60,7 +73,12 @@ async def pick_image(tags: str | list[str], interaction_seen: InteractionSeen) -
             break
 
         if picked and picked[1]:
-            await STATS_DB.mark_seen(picked[1], picked[2])
+            # Persist "seen" per pair (rolling max 1000, oldest dropped).
+            if isinstance(actor_id, int) and isinstance(target_id, int):
+                try:
+                    await STATS_DB.add_pair_seen(actor_id, target_id, picked[1], site=picked[2], max_entries=1000)
+                except Exception:
+                    pass
             return picked
         if picked:
             return picked
