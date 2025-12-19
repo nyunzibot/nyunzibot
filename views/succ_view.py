@@ -153,6 +153,14 @@ class SuccBackView(discord.ui.View):
         except Exception:
             return
 
+        # ✅ FIRST message: "Succ back" -> "Succed" (disabled)
+        button.disabled = True
+        button.label = "Succ'd"
+        try:
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
+
         tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
@@ -192,6 +200,11 @@ class SuccBackView(discord.ui.View):
         new_view = SuccBackView(interaction.user, self.original_actor)
         new_view.seen = self.seen
         new_view.count = self.count
+
+        # ✅ SECOND message: "Succ back" -> "Succ again" (enabled)
+        for item in new_view.children:
+            if isinstance(item, discord.ui.Button) and item.label == "Succ back":
+                item.label = "Succ again"
 
         try:
             msg = await interaction.edit_original_response(
