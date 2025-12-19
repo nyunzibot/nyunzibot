@@ -1,4 +1,5 @@
 import logging
+import discord
 
 from logging_setup import setup_logging
 from config import TOKEN, RULE34_API_KEY, RULE34_USER_ID, GELBOORU_API_KEY, GELBOORU_USER_ID, DB_PATH
@@ -31,7 +32,21 @@ def main():
 
     @bot.event
     async def on_ready():
-        await bot.tree.sync()  # global sync for DMs
+        try:
+            await bot.tree.sync()  # global sync for DMs
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                log.warning("Rate limited during command sync (429). Skipping sync assuming commands are already registered.")
+                if e.response is not None and hasattr(e.response, 'headers'):
+                    headers = {
+                        k: e.response.headers.get(k)
+                        for k in ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "X-RateLimit-Reset-After", "X-RateLimit-Bucket"]
+                    }
+                    log.warning("Rate Limit Headers: %s", headers)
+            else:
+                log.error("Failed to sync commands: %s", e)
+        except Exception as e:
+            log.error("Unexpected error during sync: %s", e)
         log.info("Logged in as %s", bot.user)
         log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
 
