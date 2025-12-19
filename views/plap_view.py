@@ -196,7 +196,7 @@ class PlapBackView(discord.ui.View):
             new_view.message = msg
 
             # DM notify original actor when someone plaps back (best-effort)
-            await send_dm_notify("plap", interaction.user, self.original_actor)
+            #await send_dm_notify("plap", interaction.user, self.original_actor)
         except TypeError:
             # fallback for versions that don't accept files=
             try:
@@ -208,7 +208,7 @@ class PlapBackView(discord.ui.View):
                 new_view.message = msg
 
                 # DM notify original actor when someone plaps back (best-effort)
-                await send_dm_notify("plap", interaction.user, self.original_actor)
+                #await send_dm_notify("plap", interaction.user, self.original_actor)
             except Exception:
                 # last resort: keep old message untouched, just send a new one
                 msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
