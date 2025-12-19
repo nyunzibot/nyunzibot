@@ -136,6 +136,17 @@ class PlapBackView(discord.ui.View):
 
     @discord.ui.button(label="Plap back", emoji="👋", style=discord.ButtonStyle.success)
     async def plap_back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # ✅ gate FIRST (so we don't defer/respond for someone who shouldn't use it)
+        if interaction.user.id != self.original_target.id:
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send("Not for you 😤", ephemeral=True)
+                else:
+                    await interaction.response.send_message("Not for you 😤", ephemeral=True)
+            except discord.InteractionResponded:
+                await interaction.followup.send("Not for you 😤", ephemeral=True)
+            return
+
         # ✅ show thinking bubble (we will turn THIS into the new message)
         try:
             if not interaction.response.is_done():
@@ -143,21 +154,17 @@ class PlapBackView(discord.ui.View):
         except Exception:
             return
 
-        if interaction.user.id != self.original_target.id:
-            await interaction.response.send_message("Not for you 😤", ephemeral=True)
-            return
-
         tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
-            await interaction.response.send_message("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
         image_url, md5, site = picked
 
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
-            await interaction.response.send_message("Media failed 😭 (download/convert)", ephemeral=True)
+            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
             return
 
         self.seen.add(md5)
