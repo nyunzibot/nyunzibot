@@ -16,6 +16,7 @@ from text.summaries import succ_summary
 
 log = logging.getLogger("nyunzi")
 
+
 class SuccBackView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User):
         super().__init__(timeout=3600)
@@ -73,7 +74,6 @@ class SuccBackView(discord.ui.View):
         tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
         picked = await pick_image(tags, self.seen)
         if not picked:
-            # restore button state
             button.disabled = False
             button.label = f"Refresh ({remaining})"
             try:
@@ -85,10 +85,8 @@ class SuccBackView(discord.ui.View):
 
         image_url, md5, site = picked
 
-        # CHANGED: process_media returns (file, fname)
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
-            # restore button state
             button.disabled = False
             button.label = f"Refresh ({remaining})"
             try:
@@ -103,7 +101,10 @@ class SuccBackView(discord.ui.View):
         button.disabled = False
         button.label = f"Refresh ({self.rerolls_left})"
 
-        line = random.choice(SUCC_LINES_INTIMATE).format(actor=self.original_actor.mention, target=self.original_target.mention)
+        line = random.choice(SUCC_LINES_INTIMATE).format(
+            actor=self.original_actor.mention,
+            target=self.original_target.mention
+        )
         count = await STATS_DB.get_pair_count("succ", self.original_actor.id, self.original_target.id)
         summary = succ_summary(self.original_actor, self.original_target, count)
 
@@ -111,14 +112,15 @@ class SuccBackView(discord.ui.View):
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
             color=discord.Color.from_rgb(199, 21, 133),
         )
-        embed.set_author(name=f"{self.original_actor.display_name} used /succ", icon_url=self.original_actor.display_avatar.url)
+        embed.set_author(
+            name=f"{self.original_actor.display_name} used /succ",
+            icon_url=self.original_actor.display_avatar.url
+        )
 
-        # CHANGED: only set embed image for image/gif attachments
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             embed.set_image(url=f"attachment://{fname}")
 
         try:
-            # CHANGED: attachments=[file] where file is discord.File
             await interaction.followup.edit_message(
                 message_id=interaction.message.id,
                 embed=embed,
@@ -126,7 +128,6 @@ class SuccBackView(discord.ui.View):
                 view=self
             )
         except Exception:
-            # CHANGED: for video, send as link; otherwise attach
             if fname.lower().endswith((".mp4", ".webm")):
                 await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
             else:
@@ -134,15 +135,22 @@ class SuccBackView(discord.ui.View):
 
     @discord.ui.button(label="Succ back", emoji="🫦", style=discord.ButtonStyle.danger)
     async def succ_back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ✅ show thinking bubble (we will turn THIS into the new message)
+        # ✅ gate FIRST (before defer)
+        if interaction.user.id != self.original_target.id:
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send("Not for you 😤", ephemeral=True)
+                else:
+                    await interaction.response.send_message("Not for you 😤", ephemeral=True)
+            except discord.InteractionResponded:
+                await interaction.followup.send("Not for you 😤", ephemeral=True)
+            return
+
+        # ✅ now it's safe to defer
         try:
             if not interaction.response.is_done():
                 await interaction.response.defer(thinking=True)
         except Exception:
-            return
-
-        if interaction.user.id != self.original_target.id:
-            await interaction.followup.send("Not for you 😤", ephemeral=True)
             return
 
         tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
@@ -153,7 +161,6 @@ class SuccBackView(discord.ui.View):
 
         image_url, md5, site = picked
 
-        # CHANGED: process_media returns (file, fname)
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
@@ -164,20 +171,24 @@ class SuccBackView(discord.ui.View):
         count = await STATS_DB.get_pair_count("succ", interaction.user.id, self.original_actor.id)
         self.count = count
 
-        line = random.choice(SUCC_LINES_INTIMATE).format(actor=interaction.user.mention, target=self.original_actor.mention)
+        line = random.choice(SUCC_LINES_INTIMATE).format(
+            actor=interaction.user.mention,
+            target=self.original_actor.mention
+        )
         summary = succ_summary(interaction.user, self.original_actor, count)
 
         full_embed = discord.Embed(
             description=f"{line}\n\n**{summary}**\n\n`source: {site}`",
             color=discord.Color.from_rgb(255, 105, 180),
         )
-        full_embed.set_author(name=f"{interaction.user.display_name} succs back", icon_url=interaction.user.display_avatar.url)
+        full_embed.set_author(
+            name=f"{interaction.user.display_name} succs back",
+            icon_url=interaction.user.display_avatar.url
+        )
 
-        # CHANGED: only set embed image for image/gif attachments
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             full_embed.set_image(url=f"attachment://{fname}")
 
-        # ✅ NEW: the "thinking..." message becomes the new message, with a NEW view
         new_view = SuccBackView(interaction.user, self.original_actor)
         new_view.seen = self.seen
         new_view.count = self.count
@@ -189,11 +200,8 @@ class SuccBackView(discord.ui.View):
                 files=[file],
             )
             new_view.message = msg
-
-            # DM notify original actor when someone succs back (best-effort)
-            #await send_dm_notify("succ", interaction.user, self.original_actor)
+            # await send_dm_notify("succ", interaction.user, self.original_actor)
         except TypeError:
-            # fallback for versions that don't accept files=
             try:
                 msg = await interaction.edit_original_response(
                     embed=full_embed,
@@ -201,10 +209,7 @@ class SuccBackView(discord.ui.View):
                     attachments=[file],
                 )
                 new_view.message = msg
-
-                # DM notify original actor when someone succs back (best-effort)
-                #await send_dm_notify("succ", interaction.user, self.original_actor)
+                # await send_dm_notify("succ", interaction.user, self.original_actor)
             except Exception:
-                # last resort: keep old message untouched, just send a new one
                 msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
                 new_view.message = msg
