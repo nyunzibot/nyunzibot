@@ -63,6 +63,7 @@ async def fetch_image_safebooru(tags: str, avoid_md5s: set[str]) -> tuple[str, s
                     ) as resp:
                         log.info("[SAFE FETCH] tier=%s count_probe attempt=%s/%s status=%s",
                                  tier_label, attempt, MAX_ATTEMPTS, resp.status)
+                        log.info("[SAFE FETCH] url=%s", resp.url)
                         
                         if resp.status == 429:
                             await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])

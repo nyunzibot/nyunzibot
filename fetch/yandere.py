@@ -62,6 +62,7 @@ async def fetch_image_yandere(tags: str, avoid_md5s: set[str]) -> tuple[str, str
                     ) as resp:
                         log.info("[YANDE FETCH] tier=%s count_probe attempt=%s/%s status=%s",
                                  tier_label, attempt, MAX_ATTEMPTS, resp.status)
+                        log.info("[YANDE FETCH] url=%s", resp.url)
                         
                         if resp.status == 429:
                             await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])

@@ -48,6 +48,7 @@ async def fetch_image_danbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                     ) as resp:
                         log.info("[DAN FETCH] tier=%s count_probe attempt=%s/%s status=%s",
                                  tier_label, attempt, MAX_ATTEMPTS, resp.status)
+                        log.info("[DAN FETCH] url=%s", resp.url)
                         
                         if resp.status == 200:
                             data = await resp.json()

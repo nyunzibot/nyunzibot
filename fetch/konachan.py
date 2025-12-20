@@ -62,6 +62,7 @@ async def fetch_image_konachan(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                     ) as resp:
                         log.info("[KONA FETCH] tier=%s count_probe attempt=%s/%s status=%s",
                                  tier_label, attempt, MAX_ATTEMPTS, resp.status)
+                        log.info("[KONA FETCH] url=%s", resp.url)
                         
                         if resp.status == 429:
                             await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
