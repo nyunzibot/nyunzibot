@@ -18,7 +18,7 @@ NEGATIVE_TAGS = (
 )
 
 # Tags that can be passed in extra_tags even though they're in NEGATIVE_TAGS
-ALLOWED_OVERRIDES = {"furry", anthro}
+ALLOWED_OVERRIDES = {"furry", "anthro"}
 
 # Common base tag options for autocomplete
 BASE_TAG_OPTIONS = [
