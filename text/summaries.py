@@ -78,3 +78,35 @@ def succ_summary(actor: discord.User, target: discord.User, count: int) -> str:
             f"{actor_name} keeps succ’ing {target_name}. Nobody’s pretending anymore ({count} {time_word}).",
         ]
     return random.choice(pool)
+
+
+def bounce_summary(actor: discord.User, target: discord.User, count: int) -> str:
+    time_word = "time" if count == 1 else "times"
+    
+    actor_name = f"**{actor.display_name}**"
+    target_name = f"**{target.display_name}**"
+    
+    if count <= 1:
+        pool = [
+            f"{actor_name} bounced on {target_name} {count} {time_word}!",
+            f"{actor_name} has ridden {target_name} {count} {time_word}.",
+        ]
+    elif count <= 3:
+        pool = [
+            f"{actor_name} has now bounced on {target_name} {count} {time_word}!",
+            f"{actor_name} keeps riding {target_name} — {count} {time_word} now!",
+            f"{count} {time_word} in, and {actor_name} isn’t getting off {target_name}.",
+        ]
+    elif count <= 6:
+        pool = [
+            f"{actor_name} is having fun — {count} {time_word} on {target_name}!",
+            f"{count} {time_word} now… {actor_name} is really using {target_name}.",
+            f"{actor_name} keeps bouncing — {count} {time_word} and counting.",
+        ]
+    else:
+        pool = [
+            f"{count} {time_word}. {actor_name} might never get off {target_name}!",
+            f"{actor_name} has lost count — but they’ve bounced at least {count} {time_word}.",
+            f"{actor_name} keeps riding {target_name}. It’s a marathon ({count} {time_word}).",
+        ]
+    return random.choice(pool)

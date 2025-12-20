@@ -8,6 +8,7 @@ from bot.client import create_bot
 from commands import plap as plap_cmd
 from commands import succ as succ_cmd
 from commands import stats as stats_cmd
+from commands import bounce as bounce_cmd
 
 def main():
     log = setup_logging()
@@ -29,6 +30,7 @@ def main():
     plap_cmd.setup(bot)
     succ_cmd.setup(bot)
     stats_cmd.setup(bot)
+    bounce_cmd.setup(bot)
 
     @bot.event
     async def on_ready():
