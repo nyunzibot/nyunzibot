@@ -20,6 +20,23 @@ NEGATIVE_TAGS = (
 # Tags that can be passed in extra_tags even though they're in NEGATIVE_TAGS
 ALLOWED_OVERRIDES = {"furry"}
 
+# Common base tag options for autocomplete
+BASE_TAG_OPTIONS = [
+    "futa_on_female",
+    "futa_on_futa",
+    "futanari",
+    "yuri",
+    "lesbian",
+    "straight",
+    "yaoi",
+    "gay",
+    "solo",
+    "1girl",
+    "2girls",
+    "1boy",
+    "group_sex",
+]
+
 # Base tags (edit freely)
 PLAP_BASE = "futa_on_female"
 SUCC_BASE = "futa_on_female"
