@@ -20,14 +20,14 @@ NEGATIVE_TAGS = (
 # Base tags (edit freely)
 PLAP_BASE = "futa_on_female"
 SUCC_BASE = "futa_on_female"
+BOUNCE_BASE = "futa_on_female"
 
 # Rotate positives to avoid “same top few” posts
 # NOTE: Preserving the exact behavior from your original file:
 # these are missing commas on purpose (as in original), which concatenates strings.
 PLAP_POSITIVE_SETS = [
     "sex_from_behind",
-    "bent_over",
-    "sex",
+    "bent_over"
     "doggy_style",
     "mating_press",
     "standing_sex",
@@ -50,8 +50,6 @@ PLAP_POSITIVE_SETS = [
     "x-ray",
     "cross_section"
 ]
-
-BOUNCE_BASE = "futa_on_female"
 
 BOUNCE_POSITIVE_SETS = [
     "cowgirl",
