@@ -74,8 +74,8 @@ def _apply_extra_to_ladder(ladder: list[str], extra: str) -> list[str]:
         out.append(f"{base} {extra} {neg_suffix}".strip())
     return out
 
-async def base_tag_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    """Autocomplete for base_tag parameter."""
+async def extra_tags_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    """Autocomplete for extra_tags parameter."""
     return [
         app_commands.Choice(name=opt, value=opt)
         for opt in BASE_TAG_OPTIONS if current.lower() in opt.lower()
@@ -85,12 +85,9 @@ def setup(bot: discord.Client):
     @bot.tree.command(name="bounce", description="Bounce on another user (DM only)")
     @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
     @app_commands.allowed_installs(users=True, guilds=False)
-    @app_commands.describe(
-        base_tag="Base tag to use (default: futa_on_female)",
-        extra_tags="Extra tags to include (space-separated)"
-    )
-    @app_commands.autocomplete(base_tag=base_tag_autocomplete)
-    async def bounce(interaction: discord.Interaction, target: discord.User, base_tag: Optional[str] = None, extra_tags: Optional[str] = None):
+    @app_commands.describe(extra_tags="Extra tags to include (space-separated)")
+    @app_commands.autocomplete(extra_tags=extra_tags_autocomplete)
+    async def bounce(interaction: discord.Interaction, target: discord.User, extra_tags: Optional[str] = None):
         # ACK FIRST (avoid 10062)
         ok = await safe_defer(interaction, thinking=True)
         if not ok:
@@ -109,8 +106,7 @@ def setup(bot: discord.Client):
 
         view = BounceView(interaction.user, target, extra_tags=extra_tags or "")
 
-        base = base_tag or BOUNCE_BASE
-        tags = build_tag_ladder(base, BOUNCE_POSITIVE_SETS)
+        tags = build_tag_ladder(BOUNCE_BASE, BOUNCE_POSITIVE_SETS)
         tags = _apply_extra_to_ladder(tags, extra_tags or "")
         picked = await pick_media(tags, view.seen, tries=8)
         if not picked:
