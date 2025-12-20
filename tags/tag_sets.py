@@ -17,6 +17,9 @@ NEGATIVE_TAGS = (
     "-tentacles -monster -slime -demon -alien"
 )
 
+# Tags that can be passed in extra_tags even though they're in NEGATIVE_TAGS
+ALLOWED_OVERRIDES = {"furry"}
+
 # Base tags (edit freely)
 PLAP_BASE = "futa_on_female"
 SUCC_BASE = "futa_on_female"

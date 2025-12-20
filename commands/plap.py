@@ -8,7 +8,7 @@ from bot.safe_defer import safe_defer
 from bot.notify import send_dm_notify
 from views.plap_view import PlapBackView
 from tags.tag_builder import build_tag_ladder
-from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS, NEGATIVE_TAGS
+from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS, NEGATIVE_TAGS, ALLOWED_OVERRIDES
 from fetch.pick import pick_image
 from images.process import process_image
 from db.runtime import STATS_DB
@@ -39,7 +39,7 @@ def _validate_extra_tags(extra: str) -> Optional[str]:
             continue
         if t.startswith("-"):
             return "Extra tags cannot include negative tags (no leading '-')."
-        if t in _NEG_RAW or t in _NEG_WITH_DASH:
+        if (t in _NEG_RAW or t in _NEG_WITH_DASH) and t not in ALLOWED_OVERRIDES:
             return "Extra tags cannot include any tag from the negative tag list."
     return None
 
@@ -47,17 +47,32 @@ def _apply_extra_to_ladder(ladder: list[str], extra: str) -> list[str]:
     extra = _normalize_extra_tags(extra)
     if not extra:
         return ladder
+    
+    # Check if any allowed overrides are in extra tags
+    extra_parts = set(extra.split())
+    overrides_used = extra_parts & ALLOWED_OVERRIDES
+    
     neg_suffix = NEGATIVE_TAGS.strip()
+    
+    # Remove the negative form of any override tags from the negative suffix
+    if overrides_used:
+        neg_parts = neg_suffix.split()
+        neg_parts = [p for p in neg_parts if p.lstrip("-") not in overrides_used]
+        neg_suffix = " ".join(neg_parts)
+    
     out: list[str] = []
     for s in ladder:
         s = (s or "").strip()
         if not s:
             continue
-        if neg_suffix and s.endswith(neg_suffix):
-            base = s[: -len(neg_suffix)].rstrip()
-            out.append(f"{base} {extra} {neg_suffix}".strip())
+        # Rebuild the tag string with potentially modified negative suffix
+        # First, strip any existing negative tags from the string
+        orig_neg = NEGATIVE_TAGS.strip()
+        if orig_neg and s.endswith(orig_neg):
+            base = s[: -len(orig_neg)].rstrip()
         else:
-            out.append(f"{s} {extra}".strip())
+            base = s
+        out.append(f"{base} {extra} {neg_suffix}".strip())
     return out
 
 def setup(bot: discord.Client):
