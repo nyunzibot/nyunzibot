@@ -183,6 +183,13 @@ class PlapBackView(discord.ui.View):
         tags = self._apply_extra_to_ladder(build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS))
         picked = await pick_image(tags, self.seen)
         if not picked:
+            # restore button state on failure
+            button.disabled = False
+            button.label = "Plap back"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
             await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
             return
 
@@ -190,6 +197,13 @@ class PlapBackView(discord.ui.View):
 
         file, fname = await process_image(image_url, max_attempts=3)
         if not file or not fname:
+            # restore button state on failure
+            button.disabled = False
+            button.label = "Plap back"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
             await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
             return
 
