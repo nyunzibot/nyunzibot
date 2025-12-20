@@ -51,6 +51,10 @@ def _apply_extra_to_ladder(ladder: list[str], extra: str) -> list[str]:
     extra_parts = set(extra.split())
     overrides_used = extra_parts & ALLOWED_OVERRIDES
     
+    # Separate override tags from regular extra tags
+    override_tag = " ".join(overrides_used) if overrides_used else ""
+    regular_extras = " ".join(t for t in extra.split() if t not in ALLOWED_OVERRIDES)
+    
     neg_suffix = NEGATIVE_TAGS.strip()
     
     # Remove the negative form of any override tags from the negative suffix
@@ -64,14 +68,27 @@ def _apply_extra_to_ladder(ladder: list[str], extra: str) -> list[str]:
         s = (s or "").strip()
         if not s:
             continue
-        # Rebuild the tag string with potentially modified negative suffix
-        # First, strip any existing negative tags from the string
+        # Strip any existing negative tags from the string
         orig_neg = NEGATIVE_TAGS.strip()
         if orig_neg and s.endswith(orig_neg):
             base = s[: -len(orig_neg)].rstrip()
         else:
             base = s
-        out.append(f"{base} {extra} {neg_suffix}".strip())
+        
+        # If override tag is used, replace the base tag with it
+        if override_tag:
+            # base contains "BOUNCE_BASE positive_tag", we want to replace BOUNCE_BASE
+            base_parts = base.split()
+            if base_parts:
+                # Replace first tag (the base) with override tag
+                base_parts[0] = override_tag
+                base = " ".join(base_parts)
+        
+        # Add regular extras and negative suffix
+        if regular_extras:
+            out.append(f"{base} {regular_extras} {neg_suffix}".strip())
+        else:
+            out.append(f"{base} {neg_suffix}".strip())
     return out
 
 async def extra_tags_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
