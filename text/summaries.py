@@ -13,7 +13,7 @@ def plap_summary(actor: discord.User, target: discord.User, count: int, target_t
     target_name = f"**{target.display_name}**"
 
     # Sometimes show the target's total, if provided
-    if target_total is not None and target_total >= 1 and random.random() < 0.35:
+    if target_total is not None and target_total >= 1 #and random.random() < 0.35:
         total_word = "time" if target_total == 1 else "times"
         total_pool = [
             f"{target_name} has been plapped a total of {target_total} {total_word}.",
