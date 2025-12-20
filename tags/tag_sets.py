@@ -57,7 +57,7 @@ PLAP_POSITIVE_SETS = [
     "anal",
     "vaginal",
     "missionary",
-    "blush",
+    #"blush",
     "spooning",
     "grab_waist",
     "hair_pull",
