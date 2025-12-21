@@ -1,9 +1,12 @@
 from enum import Enum
+import logging
 from config import DEDUP_PULL_TRIES
 from .fetch_image import fetch_image
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from images.process import process_image, ProcessError
+
+log = logging.getLogger("nyunzi")
 
 
 class FetchError(Enum):
@@ -42,51 +45,87 @@ async def pick_media(tags, seen, *, tries: int = 8):
     On success: (url, md5, site, file, fname, FetchError.NONE)
     On failure: (None, None, None, None, None, FetchError.<reason>)
 
-    Behavior:
-    - If the chosen post is a video AND process_image returns (None, None)
-      (too large to attach / skipped), then we SKIP and retry another post.
-    - Otherwise we return what we got.
+    Smart Retry Behavior:
+    - DOWNLOAD_FAILED: Retry download again, then try different image
+    - FILE_TOO_LARGE: Try compression, then try different image
+    - PROCESSING_FAILED: Retry processing, then try different image  
+    - VIDEO_TOO_LARGE: Try different image (can't easily compress videos)
+    - RATE_LIMITED: Return immediately (waiting is required)
     """
     last_error = FetchError.ALL_APIS_FAILED
-    video_too_large_count = 0
     
-    for _ in range(tries):
+    for attempt in range(tries):
         picked, fetch_error = await pick_image(tags, seen)
         if not picked:
             last_error = fetch_error
+            log.warning(f"[PICK_MEDIA] No image picked on attempt {attempt+1}/{tries}: {fetch_error.value}")
             return (None, None, None, None, None, last_error)
 
         image_url, md5, site = picked
+        log.info(f"[PICK_MEDIA] Attempt {attempt+1}/{tries}: Picked image from {site}")
+        
+        # First attempt at processing
         file, fname, process_error = await process_image(image_url, max_attempts=3)
 
-        # ✅ If it's a video and we couldn't attach it, skip and retry
-        if _is_video_url(image_url) and (not file or not fname):
-            if md5:
-                seen.add(md5)
-            video_too_large_count += 1
-            last_error = FetchError.VIDEO_TOO_LARGE
-            continue
+        # If first attempt succeeded, we're done!
+        if file and fname:
+            log.info(f"[PICK_MEDIA] Success on attempt {attempt+1}/{tries}")
+            return (image_url, md5, site, file, fname, FetchError.NONE)
         
-        # Map process errors to fetch errors
-        if not file or not fname:
-            if process_error == ProcessError.RATE_LIMITED:
-                last_error = FetchError.RATE_LIMITED
-            elif process_error == ProcessError.FILE_TOO_LARGE:
-                last_error = FetchError.FILE_TOO_LARGE
-            elif process_error == ProcessError.DOWNLOAD_FAILED:
-                last_error = FetchError.DOWNLOAD_FAILED
-            elif process_error == ProcessError.PROCESSING_FAILED:
-                last_error = FetchError.PROCESSING_FAILED
+        # ─── Handle specific errors with smart retries ───
+        
+        # RATE_LIMITED: Can't help by retrying
+        if process_error == ProcessError.RATE_LIMITED:
+            log.warning(f"[PICK_MEDIA] Rate limited, cannot retry")
+            return (None, None, None, None, None, FetchError.RATE_LIMITED)
+        
+        # DOWNLOAD_FAILED: Try downloading again once more
+        if process_error == ProcessError.DOWNLOAD_FAILED:
+            log.info(f"[PICK_MEDIA] Download failed, retrying download...")
+            file, fname, process_error = await process_image(image_url, max_attempts=5)
+            if file and fname:
+                log.info(f"[PICK_MEDIA] Download retry succeeded!")
+                return (image_url, md5, site, file, fname, FetchError.NONE)
+            log.warning(f"[PICK_MEDIA] Download retry also failed, trying different image")
+            last_error = FetchError.DOWNLOAD_FAILED
+        
+        # PROCESSING_FAILED: Try processing again once more
+        elif process_error == ProcessError.PROCESSING_FAILED:
+            log.info(f"[PICK_MEDIA] Processing failed, retrying with compression...")
+            # process_image now auto-tries compression on failure
+            file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
+            if file and fname:
+                log.info(f"[PICK_MEDIA] Processing retry with compression succeeded!")
+                return (image_url, md5, site, file, fname, FetchError.NONE)
+            log.warning(f"[PICK_MEDIA] Processing retry also failed, trying different image")
+            last_error = FetchError.PROCESSING_FAILED
+        
+        # FILE_TOO_LARGE: Try compression for images, skip videos
+        elif process_error == ProcessError.FILE_TOO_LARGE:
+            is_video = _is_video_url(image_url)
+            if is_video:
+                log.warning(f"[PICK_MEDIA] Video too large ({image_url[:50]}...), trying different image")
+                last_error = FetchError.VIDEO_TOO_LARGE
             else:
-                last_error = FetchError.PROCESSING_FAILED
-            return (None, None, None, None, None, last_error)
+                log.info(f"[PICK_MEDIA] File too large, trying compression...")
+                file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
+                if file and fname:
+                    log.info(f"[PICK_MEDIA] Compression succeeded!")
+                    return (image_url, md5, site, file, fname, FetchError.NONE)
+                log.warning(f"[PICK_MEDIA] Compression failed, trying different image")
+                last_error = FetchError.FILE_TOO_LARGE
+        
+        else:
+            # Unknown error
+            log.warning(f"[PICK_MEDIA] Unknown error: {process_error}, trying different image")
+            last_error = FetchError.PROCESSING_FAILED
+        
+        # Mark this image as seen so we don't retry it
+        if md5:
+            seen.add(md5)
 
-        return (image_url, md5, site, file, fname, FetchError.NONE)
-
-    # If we exhausted tries, it was likely all videos too large
-    if video_too_large_count > 0:
-        last_error = FetchError.VIDEO_TOO_LARGE
-    
+    # Exhausted all tries
+    log.warning(f"[PICK_MEDIA] Exhausted {tries} attempts, last error: {last_error.value}")
     return (None, None, None, None, None, last_error)
 
 

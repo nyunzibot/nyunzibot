@@ -1,6 +1,7 @@
 from typing import Optional
 import random
 import discord
+from discord import HTTPException
 import logging
 from discord import app_commands
 
@@ -151,16 +152,23 @@ def setup(bot: discord.Client):
             is_back=False,
         )
 
-        if file and fname:
-            # For jpg/gif, embed image attachment works.
-            # For mp4/webm, embed.set_image won't display the video; better to send link instead.
-            if fname.endswith((".mp4", ".webm")):
-                msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
+        try:
+            if file and fname:
+                # For jpg/gif, embed image attachment works.
+                # For mp4/webm, embed.set_image won't display the video; better to send link instead.
+                if fname.endswith((".mp4", ".webm")):
+                    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
+                else:
+                    embed.set_image(url=f"attachment://{fname}")
+                    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
             else:
-                embed.set_image(url=f"attachment://{fname}")
-                msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
-        else:
-            msg = await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
+                msg = await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
+        except HTTPException as e:
+            if e.code == 40005:  # Payload Too Large
+                log.warning("[PLAP] File too large for Discord, sending URL instead")
+                msg = await interaction.followup.send(content=f"📦 File too large to attach\n{image_url}", embed=embed, view=view, wait=True)
+            else:
+                raise
 
         view.message = msg
 

@@ -1,5 +1,6 @@
 import random
 import discord
+from discord import HTTPException
 import logging
 import asyncio
 
@@ -157,6 +158,15 @@ class BounceView(discord.ui.View):
                 attachments=[file],
                 view=self
             )
+        except HTTPException as e:
+            if e.code == 40005:  # Payload Too Large
+                log.warning("[BOUNCE VIEW] File too large for Discord")
+                await interaction.followup.send("📦 File too large to attach. Try refreshing for a different image.", ephemeral=True)
+            else:
+                if fname.lower().endswith((".mp4", ".webm")):
+                    await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
+                else:
+                    await interaction.followup.send(embed=embed, file=file, view=self)
         except Exception:
             if fname.lower().endswith((".mp4", ".webm")):
                 await interaction.followup.send(embed=embed, file=file, view=self, wait=True)

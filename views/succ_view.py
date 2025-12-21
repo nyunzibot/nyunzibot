@@ -1,7 +1,8 @@
 import random
 import discord
+from discord import HTTPException
 import logging
-import asyncio  # ✅ added
+import asyncio
 
 from bot.safe_defer import safe_defer
 from bot.notify import send_dm_notify
@@ -155,6 +156,15 @@ class SuccBackView(discord.ui.View):
                 attachments=[file],
                 view=self
             )
+        except HTTPException as e:
+            if e.code == 40005:  # Payload Too Large
+                log.warning("[SUCC VIEW] File too large for Discord")
+                await interaction.followup.send("📦 File too large to attach. Try refreshing for a different image.", ephemeral=True)
+            else:
+                if fname.lower().endswith((".mp4", ".webm")):
+                    await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
+                else:
+                    await interaction.followup.send(embed=embed, file=file, view=self)
         except Exception:
             if fname.lower().endswith((".mp4", ".webm")):
                 await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
@@ -265,7 +275,13 @@ class SuccBackView(discord.ui.View):
                 files=[file],
             )
             new_view.message = msg
-            # await send_dm_notify("succ", interaction.user, self.original_actor)
+        except HTTPException as e:
+            if e.code == 40005:  # Payload Too Large
+                log.warning("[SUCC VIEW] File too large for Discord in succ_back")
+                await interaction.followup.send("📦 File too large to attach. Try again for a different image.", ephemeral=True)
+                return
+            else:
+                raise
         except TypeError:
             try:
                 msg = await interaction.edit_original_response(
@@ -274,7 +290,11 @@ class SuccBackView(discord.ui.View):
                     attachments=[file],
                 )
                 new_view.message = msg
-                # await send_dm_notify("succ", interaction.user, self.original_actor)
+            except HTTPException as e:
+                if e.code == 40005:
+                    await interaction.followup.send("📦 File too large to attach. Try again for a different image.", ephemeral=True)
+                    return
+                raise
             except Exception:
                 msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
                 new_view.message = msg
