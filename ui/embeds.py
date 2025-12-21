@@ -1,78 +1,55 @@
 """
-Rich Discord Embed Builder for Nyunzi Bot
-Beautiful, visually appealing embeds with all Discord features
+Rich Discord Embed Styling for Nyunzi Bot
+Clean, beautiful embeds with subtle accents
 """
 import discord
-from datetime import datetime, timezone
 from typing import Optional
 import random
 
 
 # ═══════════════════════════════════════════════════════════════
-# COLOR PALETTES - Beautiful gradient-inspired colors
+# COLOR PALETTES - Beautiful, vibrant colors
 # ═══════════════════════════════════════════════════════════════
 
 class EmbedColors:
     """Premium color palette for different actions."""
     # Plap - Warm passionate tones
-    PLAP_PRIMARY = 0xFF6B9D      # Hot pink
-    PLAP_SECONDARY = 0xFF9E80    # Soft coral
-    PLAP_GRADIENT = [0xFF6B9D, 0xFF8FA3, 0xFFB4AB]
+    PLAP = 0xFF6B9D       # Hot pink
     
-    # Succ - Sweet candy vibes
-    SUCC_PRIMARY = 0xE84393      # Deep magenta
-    SUCC_SECONDARY = 0xFD79A8   # Soft pink
-    SUCC_GRADIENT = [0xE84393, 0xFD79A8, 0xFAB1A0]
+    # Succ - Sweet candy vibes  
+    SUCC = 0xE84393       # Deep magenta
     
     # Bounce - Energetic purple
-    BOUNCE_PRIMARY = 0xA855F7    # Vibrant purple
-    BOUNCE_SECONDARY = 0xC084FC  # Light purple
-    BOUNCE_GRADIENT = [0xA855F7, 0xC084FC, 0xE879F9]
+    BOUNCE = 0xA855F7     # Vibrant purple
     
     # Error states
-    ERROR = 0xEF4444             # Red
-    WARNING = 0xF59E0B           # Amber
-    SUCCESS = 0x10B981           # Emerald
+    ERROR = 0xEF4444      # Red
 
 
 # ═══════════════════════════════════════════════════════════════
-# DECORATIVE ELEMENTS
+# DECORATIVE ACCENTS - Subtle and pretty
 # ═══════════════════════════════════════════════════════════════
 
-class Decorations:
-    """Pretty decorative elements for embeds."""
-    # Sparkles and stars
+class Accents:
+    """Subtle decorative accents."""
     SPARKLE = "✨"
     STAR = "⭐"
-    STARS = "✧･ﾟ: *✧･ﾟ:*"
-    MAGIC = "｡･:*:･ﾟ★"
+    HEART = "💕"
     
-    # Hearts
-    HEART_PULSE = "💗"
-    HEART_PINK = "💕"
-    HEART_FIRE = "❤️‍🔥"
-    HEART_ARROW = "💘"
-    
-    # Action emojis
+    # Action emojis for author line
     PLAP_EMOJI = "💢"
     SUCC_EMOJI = "🍬"
     BOUNCE_EMOJI = "🎀"
     
-    # Dividers
-    DIVIDER_FANCY = "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
-    DIVIDER_DOTS = "• • • • • • • • •"
-    DIVIDER_STARS = "✧ ✦ ✧ ✦ ✧ ✦ ✧"
-    DIVIDER_WAVE = "〰️〰️〰️〰️〰️"
-    
-    # Stats icons
-    STATS_ICON = "📊"
-    COUNTER_ICON = "🔢"
-    FIRE_ICON = "🔥"
-    TARGET_ICON = "🎯"
+    @staticmethod
+    def random_sparkle() -> str:
+        """Get a random sparkle prefix."""
+        options = ["✨", "⭐", "💫", "✧"]
+        return random.choice(options)
 
 
 # ═══════════════════════════════════════════════════════════════
-# EMBED BUILDERS
+# EMBED BUILDER - Clean and elegant
 # ═══════════════════════════════════════════════════════════════
 
 def build_action_embed(
@@ -86,87 +63,44 @@ def build_action_embed(
     source: str,
     is_back: bool = False,
 ) -> discord.Embed:
-    """Build a beautiful, feature-rich embed for action commands."""
+    """Build a clean, beautiful embed for action commands."""
     
-    # Select color and emoji based on action type
+    # Select color based on action type
     colors = {
-        "plap": EmbedColors.PLAP_PRIMARY,
-        "succ": EmbedColors.SUCC_PRIMARY,
-        "bounce": EmbedColors.BOUNCE_PRIMARY,
-    }
-    emojis = {
-        "plap": "💢",
-        "succ": "🍬", 
-        "bounce": "🎀",
-    }
-    verbs = {
-        "plap": ("plapped", "plaps"),
-        "succ": ("succ'd", "succs"),
-        "bounce": ("bounced on", "bounces on"),
+        "plap": EmbedColors.PLAP,
+        "succ": EmbedColors.SUCC,
+        "bounce": EmbedColors.BOUNCE,
     }
     
-    color = colors.get(action_type, EmbedColors.PLAP_PRIMARY)
-    emoji = emojis.get(action_type, "💫")
-    past_verb, present_verb = verbs.get(action_type, ("used", "uses"))
+    color = colors.get(action_type, EmbedColors.PLAP)
     
-    # Create embed with color
-    embed = discord.Embed(color=discord.Color(color))
+    # Build summary line
+    time_word = "time" if target_total == 1 else "times"
+    if target_total is not None and target_total >= 1:
+        summary = f"**{target.display_name}** has been {action_type}ped a total of {target_total} {time_word}."
+    else:
+        summary = ""
     
-    # ─── Author Header ───
+    # Build description with sparkle accent
+    sparkle = Accents.random_sparkle()
+    
+    if summary:
+        description = f"{sparkle} {action_line}\n\n{summary}\n\n`source: {source}`"
+    else:
+        description = f"{sparkle} {action_line}\n\n`source: {source}`"
+    
+    # Create embed
+    embed = discord.Embed(
+        description=description,
+        color=discord.Color(color),
+    )
+    
+    # Author header
     action_word = f"{action_type}s back" if is_back else f"used /{action_type}"
     embed.set_author(
         name=f"{actor.display_name} {action_word}",
         icon_url=actor.display_avatar.url
     )
-    
-    # ─── Main Description ───
-    description_parts = [
-        f"{Decorations.SPARKLE} {action_line}",
-        "",
-        Decorations.DIVIDER_FANCY,
-    ]
-    embed.description = "\n".join(description_parts)
-    
-    # ─── Stats Fields ───
-    # Pair stats
-    time_word = "time" if pair_count == 1 else "times"
-    
-    # Streak indicator based on count
-    if pair_count >= 10:
-        streak = "🔥🔥🔥"
-    elif pair_count >= 5:
-        streak = "🔥🔥"
-    elif pair_count >= 3:
-        streak = "🔥"
-    else:
-        streak = ""
-    
-    embed.add_field(
-        name=f"{emoji} Session Stats",
-        value=f"```fix\n{actor.display_name} → {target.display_name}: {pair_count}x {streak}```",
-        inline=True
-    )
-    
-    # Target total if available
-    if target_total is not None and target_total >= 1:
-        embed.add_field(
-            name=f"🎯 {target.display_name}'s Total",
-            value=f"```yaml\nAll-time: {target_total}x```",
-            inline=True
-        )
-    
-    # ─── Footer ───
-    footer_texts = [
-        f"✨ Source: {source}",
-        f"🌸 Source: {source}",
-        f"💫 Source: {source}",
-    ]
-    embed.set_footer(
-        text=random.choice(footer_texts),
-    )
-    
-    # ─── Timestamp ───
-    embed.timestamp = datetime.now(timezone.utc)
     
     return embed
 
@@ -175,86 +109,27 @@ def build_error_embed(
     error_message: str,
     *,
     title: str = "Oops!",
-    suggestion: Optional[str] = None,
 ) -> discord.Embed:
     """Build a pretty error embed."""
     embed = discord.Embed(
-        title=f"❌ {title}",
-        description=error_message,
+        description=f"❌ {error_message}",
         color=discord.Color(EmbedColors.ERROR)
     )
-    
-    if suggestion:
-        embed.add_field(
-            name="💡 Suggestion",
-            value=suggestion,
-            inline=False
-        )
-    
-    embed.set_footer(text="Try again in a moment!")
     return embed
 
 
 # ═══════════════════════════════════════════════════════════════
-# BUTTON STYLES - Enhanced button labels
-# ═══════════════════════════════════════════════════════════════
-
-class ButtonLabels:
-    """Pretty button labels with emojis."""
-    
-    @staticmethod
-    def refresh(remaining: int) -> str:
-        if remaining <= 0:
-            return "No refreshes left"
-        return f"Refresh ({remaining})"
-    
-    @staticmethod
-    def refresh_loading(dots: int = 1) -> str:
-        return "Loading" + "." * dots
-    
-    @staticmethod
-    def back_button(action: str) -> str:
-        """Get the 'X back' button label."""
-        labels = {
-            "plap": "Plap back",
-            "succ": "Succ back",
-            "bounce": "Bounce back",
-        }
-        return labels.get(action, f"{action.title()} back")
-    
-    @staticmethod
-    def again_button(action: str) -> str:
-        """Get the 'X again' button label."""
-        labels = {
-            "plap": "Plap again",
-            "succ": "Succ again",
-            "bounce": "Bounce again",
-        }
-        return labels.get(action, f"{action.title()} again")
-    
-    @staticmethod
-    def done_button(action: str) -> str:
-        """Get the completed action button label."""
-        labels = {
-            "plap": "Plapped",
-            "succ": "Succ'd",
-            "bounce": "Bounced",
-        }
-        return labels.get(action, "Done")
-
-
-# ═══════════════════════════════════════════════════════════════
-# QUICK HELPERS
+# HELPERS
 # ═══════════════════════════════════════════════════════════════
 
 def get_action_color(action: str) -> discord.Color:
     """Get the color for an action type."""
     colors = {
-        "plap": EmbedColors.PLAP_PRIMARY,
-        "succ": EmbedColors.SUCC_PRIMARY,
-        "bounce": EmbedColors.BOUNCE_PRIMARY,
+        "plap": EmbedColors.PLAP,
+        "succ": EmbedColors.SUCC,
+        "bounce": EmbedColors.BOUNCE,
     }
-    return discord.Color(colors.get(action, EmbedColors.PLAP_PRIMARY))
+    return discord.Color(colors.get(action, EmbedColors.PLAP))
 
 
 def get_action_emoji(action: str) -> str:
@@ -265,3 +140,4 @@ def get_action_emoji(action: str) -> str:
         "bounce": "🎀",
     }
     return emojis.get(action, "💫")
+
