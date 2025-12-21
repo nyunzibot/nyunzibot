@@ -38,7 +38,7 @@ BASE_TAG_OPTIONS = [
 ]
 
 # Base tags (edit freely)
-PLAP_BASE = "futa_on_female"
+PLAP_BASE = "d.va_does_overwatch rikolo video"
 SUCC_BASE = "futa_on_female"
 BOUNCE_BASE = "futa_on_female"
 
@@ -46,7 +46,6 @@ BOUNCE_BASE = "futa_on_female"
 # NOTE: Preserving the exact behavior from your original file:
 # these are missing commas on purpose (as in original), which concatenates strings.
 PLAP_POSITIVE_SETS = [
-    "sex"
     # "sex_from_behind",
     # "bent_over"
     # "doggy_style",
