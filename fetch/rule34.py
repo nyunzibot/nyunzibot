@@ -418,6 +418,9 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                             count = c
                             tier_pid_cap = count - 1
                             set_cached_count("rule34", tier_tags, tier_label, count)
+                            log.info("[R34 PROBE] tier=%s status=%s count=%s", tier_label, resp.status, count)
+                        else:
+                            log.info("[R34 PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                         break
 
                     except (aiohttp.ClientError, asyncio.TimeoutError):

@@ -79,6 +79,9 @@ async def fetch_image_safebooru(tags: str, avoid_md5s: set[str]) -> tuple[str, s
                                 count = c
                                 tier_pid_cap = min(tier_pid_cap, count - 1)
                                 set_cached_count("safebooru", tier_tags, tier_label, c)
+                                log.info("[SAFE PROBE] tier=%s status=%s count=%s", tier_label, resp.status, c)
+                            else:
+                                log.info("[SAFE PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                             break
                     except Exception as e:
                         log.warning("[SAFE FETCH] probe error: %s", e)

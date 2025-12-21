@@ -59,6 +59,9 @@ async def fetch_image_danbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                                 count = data.get("counts", {}).get("posts")
                                 if count is not None:
                                     set_cached_count("danbooru", tier_tags, tier_label, count)
+                                    log.info("[DAN PROBE] tier=%s status=%s count=%s", tier_label, resp.status, count)
+                                else:
+                                    log.info("[DAN PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                                 break
                             elif resp.status == 422:
                                 # Too complex

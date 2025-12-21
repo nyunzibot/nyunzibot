@@ -78,6 +78,9 @@ async def fetch_image_konachan(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                                 count = c
                                 tier_pid_cap = min(tier_pid_cap, c)
                                 set_cached_count("konachan", tier_tags, tier_label, c)
+                                log.info("[KONA PROBE] tier=%s status=%s count=%s", tier_label, resp.status, c)
+                            else:
+                                log.info("[KONA PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                             break
                     except Exception as e:
                         log.warning("[KONA FETCH] probe error: %s", e)

@@ -455,6 +455,9 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                             if count:
                                 tier_pid_cap = count - 1
                                 set_cached_count("gelbooru", tier_tags, tier_label, count)
+                                log.info("[GEL PROBE] tier=%s status=%s count=%s", tier_label, resp.status, count)
+                            else:
+                                log.info("[GEL PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                             break
 
                     except (aiohttp.ClientError, asyncio.TimeoutError):
