@@ -88,18 +88,18 @@ def _compress_video_files(input_path: str, output_path: str, target_size: int) -
             return os.path.getsize(output_path)
         return 999_999_999
 
-    # 1. Moderate compression
-    size = run_pass(1280, 24, "fast")
+    # 1. Moderate compression (Speed: superfast, CRF 24)
+    size = run_pass(1280, 24, "superfast")
     if size <= target_size:
         return True
         
-    # 2. Aggressive
-    size = run_pass(854, 28, "veryfast")
+    # 2. Aggressive (Speed: ultrafast, CRF 28)
+    size = run_pass(854, 28, "ultrafast")
     if size <= target_size:
         return True
 
-    # 3. Potato mode
-    size = run_pass(640, 32, "superfast")
+    # 3. Potato mode (Speed: ultrafast, CRF 32)
+    size = run_pass(640, 32, "ultrafast")
     if size <= target_size:
         return True
         
