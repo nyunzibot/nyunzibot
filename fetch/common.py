@@ -1,3 +1,5 @@
+import time
+
 def should_lower_limit(http_status: int | None, exc: Exception | None, parse_failed: bool) -> bool:
     if parse_failed:
         return True
@@ -45,3 +47,26 @@ def pid_max_for(site: str, score_tag: str) -> int:
         if score_tag == "score:>30": return 3
         if score_tag == "score:>20": return 4
         return 5
+
+# =========================
+# PROBE CACHE
+# Simple in-memory cache: (site, tags, tier) -> (count, timestamp)
+# TTL: 5 minutes? actually for this use case, even 30s is enough to survive the retry loop.
+# Let's say 60 seconds to be safe.
+# =========================
+_PROBE_CACHE = {}
+
+def get_cached_count(site: str, tags: str, tier: str) -> int | None:
+    key = (site, tags, tier)
+    entry = _PROBE_CACHE.get(key)
+    if not entry:
+        return None
+    val, ts = entry
+    if time.time() - ts > 60: # 60s TTL
+        del _PROBE_CACHE[key]
+        return None
+    return val
+
+def set_cached_count(site: str, tags: str, tier: str, count: int):
+    key = (site, tags, tier)
+    _PROBE_CACHE[key] = (count, time.time())

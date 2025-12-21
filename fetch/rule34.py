@@ -5,7 +5,7 @@ import logging
 import xml.etree.ElementTree as ET
 
 from config import RULE34_API, RULE34_API_KEY, RULE34_USER_ID, USER_AGENT, SCORE_TIERS, LIMIT_TIERS, PAGES_PER_LIMIT
-from .common import should_lower_limit, is_supported_file_url, size_ok, pid_max_for
+from .common import should_lower_limit, is_supported_file_url, size_ok, pid_max_for, get_cached_count, set_cached_count
 
 log = logging.getLogger("nyunzi")
 
@@ -375,55 +375,59 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
             tier_tags = with_score_filter(tags, tier)
             tier_label = f">={tier}" if tier is not None else "none"
 
-            # ---- Step 1: probe count (pid=0) for this tier ----
-            count: int | None = None
+            # ---- Step 1: probe count (limit=1, pid=0) for this tier ----
+            count = get_cached_count("rule34", tier_tags, tier_label)
             tier_pid_cap = PID_HARD_CAP
 
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                params_probe = {
-                    "limit": LIMIT,
-                    "pid": 0,
-                    "tags": tier_tags,
-                    "api_key": RULE34_API_KEY,
-                    "user_id": RULE34_USER_ID,
-                }
-
-                try:
-                    async with session.get(
-                        RULE34_API,
-                        params=params_probe,
-                        timeout=aiohttp.ClientTimeout(total=20),
-                    ) as resp:
-                        log.info("[R34 FETCH] tier=%s count_probe attempt=%s/%s limit=%s pid=%s status=%s",
-                                 tier_label, attempt, MAX_ATTEMPTS, LIMIT, 0, resp.status)
-                        log.info("[R34 FETCH] url=%s", resp.url)
-
-                        if resp.status == 429:
-                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                            continue
-                        if resp.status != 200:
-                            continue
-
-                        xml0 = await resp.text()
+            if count is None:
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    params_probe = {
+                        "limit": LIMIT,
+                        "pid": 0,
+                        "tags": tier_tags,
+                        "api_key": RULE34_API_KEY,
+                        "user_id": RULE34_USER_ID,
+                    }
 
                     try:
-                        root0 = ET.fromstring(xml0 or "")
-                    except ET.ParseError as e:
-                        log.warning("[R34 FETCH] tier=%s count_probe XML parse error: %s", tier_label, e)
+                        async with session.get(
+                            RULE34_API,
+                            params=params_probe,
+                            timeout=aiohttp.ClientTimeout(total=20),
+                        ) as resp:
+                            log.debug("[R34 FETCH] tier=%s count_probe attempt=%s/%s limit=%s pid=%s status=%s",
+                                     tier_label, attempt, MAX_ATTEMPTS, LIMIT, 0, resp.status)
+                            log.info("[R34 FETCH] url=%s", resp.url)
+
+                            if resp.status == 429:
+                                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                                continue
+                            if resp.status != 200:
+                                continue
+
+                            xml0 = await resp.text()
+
+                        try:
+                            root0 = ET.fromstring(xml0 or "")
+                        except ET.ParseError as e:
+                            log.warning("[R34 FETCH] tier=%s XML parse error: %s", tier_label, e)
+                            continue
+
+                        c = extract_attrs_count(root0)
+                        if c is not None:
+                            count = c
+                            tier_pid_cap = count - 1
+                            set_cached_count("rule34", tier_tags, tier_label, count)
+                        break
+
+                    except (aiohttp.ClientError, asyncio.TimeoutError):
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
-
-                    count = extract_count_from_root(root0)
-                    if count:
-                        # keep safety clamp, but also don't exceed count-1
-                        tier_pid_cap = min(tier_pid_cap, count - 1)
-                    break
-
-                except (aiohttp.ClientError, asyncio.TimeoutError):
-                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                    continue
-                except Exception:
-                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                    continue
+                    except Exception:
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+            else:
+                 tier_pid_cap = count - 1
 
             if not count:
                 log.info("[R34 FETCH] tier=%s no count available; trying next tier", tier_label)

@@ -3,8 +3,8 @@ import asyncio
 import aiohttp
 import logging
 
-from config import DANBOORU_API, USER_AGENT
-from .common import is_supported_file_url, size_ok
+from config import DANBOORU_API, DANBOORU_API_KEY, DANBOORU_LOGIN_ID, USER_AGENT
+from .common import is_supported_file_url, size_ok, get_cached_count, set_cached_count
 
 log = logging.getLogger("nyunzi")
 
@@ -39,30 +39,35 @@ async def fetch_image_danbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
             url_count = f"{DANBOORU_API}/counts/posts.json"
             count: int | None = None
 
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                try:
-                    async with session.get(
-                        url_count,
-                        params={"tags": tier_tags},
-                        timeout=aiohttp.ClientTimeout(total=20),
-                    ) as resp:
-                        log.info("[DAN FETCH] tier=%s count_probe attempt=%s/%s status=%s",
-                                 tier_label, attempt, MAX_ATTEMPTS, resp.status)
-                        log.info("[DAN FETCH] url=%s", resp.url)
-                        
-                        if resp.status == 200:
-                            data = await resp.json()
-                            # {"counts": {"posts": 123}}
-                            count = data.get("counts", {}).get("posts")
-                            break
-                        elif resp.status == 422:
-                            # Too complex
-                            break
-                        elif resp.status == 429:
-                             await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                except Exception as e:
-                    log.warning("[DAN FETCH] probe error: %s", e)
-                    continue
+            count = get_cached_count("danbooru", tier_tags, tier_label)
+
+            if count is None:
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    try:
+                        async with session.get(
+                            url_count,
+                            params={"tags": tier_tags},
+                            timeout=aiohttp.ClientTimeout(total=20),
+                        ) as resp:
+                            log.info("[DAN FETCH] tier=%s count_probe attempt=%s/%s status=%s",
+                                     tier_label, attempt, MAX_ATTEMPTS, resp.status)
+                            log.info("[DAN FETCH] url=%s", resp.url)
+                            
+                            if resp.status == 200:
+                                data = await resp.json()
+                                # {"counts": {"posts": 123}}
+                                count = data.get("counts", {}).get("posts")
+                                if count is not None:
+                                    set_cached_count("danbooru", tier_tags, tier_label, count)
+                                break
+                            elif resp.status == 422:
+                                # Too complex
+                                break
+                            elif resp.status == 429:
+                                 await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                    except Exception as e:
+                        log.warning("[DAN FETCH] probe error: %s", e)
+                        continue
 
             if not count:
                 log.info("[DAN FETCH] tier=%s no count; trying next tier", tier_label)

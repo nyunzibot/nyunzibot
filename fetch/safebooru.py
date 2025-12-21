@@ -5,7 +5,7 @@ import logging
 import xml.etree.ElementTree as ET
 
 from config import USER_AGENT
-from .common import is_supported_file_url, size_ok
+from .common import is_supported_file_url, size_ok, get_cached_count, set_cached_count
 
 log = logging.getLogger("nyunzi")
 
@@ -45,42 +45,48 @@ async def fetch_image_safebooru(tags: str, avoid_md5s: set[str]) -> tuple[str, s
             tier_label = f">={tier}" if tier is not None else "none"
 
             # ---- Step 1: probe count (pid=0) for this tier ----
-            count: int | None = None
+            count = get_cached_count("safebooru", tier_tags, tier_label)
             tier_pid_cap = PID_HARD_CAP
 
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                params_probe = {
-                    "limit": LIMIT,
-                    "pid": 0,
-                    "tags": tier_tags,
-                }
+            if count is None:
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    params_probe = {
+                        "limit": LIMIT,
+                        "pid": 0,
+                        "tags": tier_tags,
+                    }
 
-                try:
-                    async with session.get(
-                        BASE_URL,
-                        params=params_probe,
-                        timeout=aiohttp.ClientTimeout(total=20),
-                    ) as resp:
-                        log.info("[SAFE FETCH] tier=%s count_probe attempt=%s/%s status=%s",
-                                 tier_label, attempt, MAX_ATTEMPTS, resp.status)
-                        log.info("[SAFE FETCH] url=%s", resp.url)
-                        
-                        if resp.status == 429:
-                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                            continue
-                        if resp.status != 200:
-                            continue
+                    try:
+                        async with session.get(
+                            BASE_URL,
+                            params=params_probe,
+                            timeout=aiohttp.ClientTimeout(total=20),
+                        ) as resp:
+                            log.debug("[SAFE FETCH] tier=%s count_probe attempt=%s/%s status=%s",
+                                     tier_label, attempt, MAX_ATTEMPTS, resp.status)
+                            log.info("[SAFE FETCH] url=%s", resp.url)
+                            
+                            if resp.status == 429:
+                                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                                continue
+                            if resp.status != 200:
+                                continue
 
-                        xml_text = await resp.text()
-                        root = ET.fromstring(xml_text)
-                        count = extract_count_from_root(root)
-                        if count:
-                            tier_pid_cap = min(tier_pid_cap, count - 1)
-                        break
-                except Exception as e:
-                    log.warning("[SAFE FETCH] probe error: %s", e)
-                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                    continue
+                            xml_text = await resp.text()
+                            root = ET.fromstring(xml_text)
+                            c = extract_count_from_root(root)
+                            if c:
+                                count = c
+                                tier_pid_cap = min(tier_pid_cap, count - 1)
+                                set_cached_count("safebooru", tier_tags, tier_label, c)
+                            break
+                    except Exception as e:
+                        log.warning("[SAFE FETCH] probe error: %s", e)
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+            else:
+                if count:
+                    tier_pid_cap = min(tier_pid_cap, count - 1)
 
             if not count:
                 log.info("[SAFE FETCH] tier=%s no count; trying next tier", tier_label)

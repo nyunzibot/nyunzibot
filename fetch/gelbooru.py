@@ -4,7 +4,7 @@ import aiohttp
 import logging
 
 from config import GELBOORU_API, GELBOORU_API_KEY, GELBOORU_USER_ID, USER_AGENT, SCORE_TIERS, LIMIT_TIERS, PAGES_PER_LIMIT
-from .common import should_lower_limit, is_supported_file_url, size_ok, pid_max_for
+from .common import should_lower_limit, is_supported_file_url, size_ok, pid_max_for, get_cached_count, set_cached_count
 
 log = logging.getLogger("nyunzi")
 
@@ -418,49 +418,54 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
             tier_label = f">={tier}" if tier is not None else "none"
 
             # ---- Step 1: probe count for this tier ----
-            count = None
+            count = get_cached_count("gelbooru", tier_tags, tier_label)
             tier_pid_cap = PID_HARD_CAP
 
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                params_probe = {
-                    "limit": LIMIT,
-                    "pid": 0,
-                    "tags": tier_tags,
-                    "api_key": GELBOORU_API_KEY,
-                    "user_id": GELBOORU_USER_ID,
-                    "json": 1,
-                }
+            if count is None:
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    params_probe = {
+                        "limit": LIMIT,
+                        "pid": 0,
+                        "tags": tier_tags,
+                        "api_key": GELBOORU_API_KEY,
+                        "user_id": GELBOORU_USER_ID,
+                        "json": 1,
+                    }
 
-                try:
-                    async with session.get(
-                        GELBOORU_API,
-                        params=params_probe,
-                        timeout=aiohttp.ClientTimeout(total=20),
-                    ) as resp:
-                        log.info(
-                            "[GEL FETCH] tier=%s count_probe attempt=%s/%s limit=%s pid=%s status=%s",
-                            tier_label, attempt, MAX_ATTEMPTS, LIMIT, 0, resp.status
-                        )
-                        log.info("[GEL FETCH] url=%s", resp.url)
+                    try:
+                        async with session.get(
+                            GELBOORU_API,
+                            params=params_probe,
+                            timeout=aiohttp.ClientTimeout(total=20),
+                        ) as resp:
+                            log.debug(
+                                "[GEL FETCH] tier=%s count_probe attempt=%s/%s limit=%s pid=%s status=%s",
+                                tier_label, attempt, MAX_ATTEMPTS, LIMIT, 0, resp.status
+                            )
+                            log.info("[GEL FETCH] url=%s", resp.url)
 
-                        if resp.status == 429:
-                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                            continue
-                        if resp.status != 200:
-                            continue
+                            if resp.status == 429:
+                                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                                continue
+                            if resp.status != 200:
+                                continue
 
-                        data_probe = await resp.json(content_type=None)
-                        count = extract_attrs_count(data_probe)
-                        if count:
-                            tier_pid_cap = count - 1
-                        break
+                            data_probe = await resp.json(content_type=None)
+                            count = extract_attrs_count(data_probe)
+                            if count:
+                                tier_pid_cap = count - 1
+                                set_cached_count("gelbooru", tier_tags, tier_label, count)
+                            break
 
-                except (aiohttp.ClientError, asyncio.TimeoutError):
-                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                    continue
-                except Exception:
-                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                    continue
+                    except (aiohttp.ClientError, asyncio.TimeoutError):
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+                    except Exception:
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+            else:
+                if count:
+                    tier_pid_cap = count - 1
 
             if not count:
                 log.info("[GEL FETCH] tier=%s no count available; trying next tier", tier_label)

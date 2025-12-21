@@ -5,7 +5,7 @@ import logging
 import xml.etree.ElementTree as ET
 
 from config import YANDERE_API, USER_AGENT
-from .common import is_supported_file_url, size_ok
+from .common import is_supported_file_url, size_ok, get_cached_count, set_cached_count
 
 log = logging.getLogger("nyunzi")
 
@@ -42,44 +42,50 @@ async def fetch_image_yandere(tags: str, avoid_md5s: set[str]) -> tuple[str, str
             tier_label = f">={tier}" if tier is not None else "none"
 
             # ---- Step 1: probe count (limit=1, page=1) for this tier ----
-            count: int | None = None
+            count = get_cached_count("yandere", tier_tags, tier_label)
             tier_pid_cap = PID_HARD_CAP
 
-            # Moebooru XML endpoint: /post.xml
-            url_xml = f"{YANDERE_API}.xml"
+            if count is None:
+                # Moebooru XML endpoint: /post.xml
+                url_xml = f"{YANDERE_API}.xml"
 
-            for attempt in range(1, MAX_ATTEMPTS + 1):
-                params_probe = {
-                    "limit": 1,
-                    "tags": tier_tags,
-                }
+                for attempt in range(1, MAX_ATTEMPTS + 1):
+                    params_probe = {
+                        "limit": 1,
+                        "tags": tier_tags,
+                    }
 
-                try:
-                    async with session.get(
-                        url_xml,
-                        params=params_probe,
-                        timeout=aiohttp.ClientTimeout(total=20),
-                    ) as resp:
-                        log.info("[YANDE FETCH] tier=%s count_probe attempt=%s/%s status=%s",
-                                 tier_label, attempt, MAX_ATTEMPTS, resp.status)
-                        log.info("[YANDE FETCH] url=%s", resp.url)
-                        
-                        if resp.status == 429:
-                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                            continue
-                        if resp.status != 200:
-                            continue
+                    try:
+                        async with session.get(
+                            url_xml,
+                            params=params_probe,
+                            timeout=aiohttp.ClientTimeout(total=20),
+                        ) as resp:
+                            log.debug("[YANDE FETCH] tier=%s count_probe attempt=%s/%s status=%s",
+                                     tier_label, attempt, MAX_ATTEMPTS, resp.status)
+                            log.info("[YANDE FETCH] url=%s", resp.url)
+                            
+                            if resp.status == 429:
+                                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                                continue
+                            if resp.status != 200:
+                                continue
 
-                        xml_text = await resp.text()
-                        root = ET.fromstring(xml_text)
-                        count = extract_count_from_root(root)
-                        if count:
-                            tier_pid_cap = min(tier_pid_cap, count)
-                        break
-                except Exception as e:
-                    log.warning("[YANDE FETCH] probe error: %s", e)
-                    await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                    continue
+                            xml_text = await resp.text()
+                            root = ET.fromstring(xml_text)
+                            c = extract_count_from_root(root)
+                            if c:
+                                count = c
+                                tier_pid_cap = min(tier_pid_cap, c)
+                                set_cached_count("yandere", tier_tags, tier_label, c)
+                            break
+                    except Exception as e:
+                        log.warning("[YANDE FETCH] probe error: %s", e)
+                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                        continue
+            else:
+                if count:
+                    tier_pid_cap = min(tier_pid_cap, count)
 
             if not count:
                 log.info("[YANDE FETCH] tier=%s no count; trying next tier", tier_label)
