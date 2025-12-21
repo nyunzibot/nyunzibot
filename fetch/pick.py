@@ -1,5 +1,6 @@
 from enum import Enum
 import logging
+from typing import Callable, Awaitable, Optional
 from config import DEDUP_PULL_TRIES
 from .fetch_image import fetch_image
 from db.stats import InteractionSeen
@@ -38,7 +39,7 @@ def get_error_message(error: FetchError) -> str:
     return messages.get(error, "Something went wrong 😭 Try again.")
 
 
-async def pick_media(tags, seen, *, tries: int = 8):
+async def pick_media(tags, seen, *, tries: int = 8, status_cb: Optional[Callable[[str], Awaitable[None]]] = None):
     """
     Returns: (image_url, md5, site, file, fname, error) tuple
     
@@ -103,6 +104,9 @@ async def pick_media(tags, seen, *, tries: int = 8):
         # FILE_TOO_LARGE: Try compression (images AND videos now), then fallback for video
         elif process_error == ProcessError.FILE_TOO_LARGE:
             log.info(f"[PICK_MEDIA] File/Video too large, trying compression...")
+            if status_cb:
+                await status_cb("Compressing video... 🎬")
+            
             file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
             
             if file and fname:

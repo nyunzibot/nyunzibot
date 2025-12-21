@@ -123,9 +123,15 @@ def setup(bot: discord.Client):
 
         view = SuccBackView(interaction.user, target, extra_tags=extra_tags or "")
 
+        async def on_status(msg: str):
+            try:
+                await interaction.edit_original_response(content=msg)
+            except Exception:
+                pass
+
         tags = build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS)
         tags = _apply_extra_to_ladder(tags, extra_tags or "")
-        result = await pick_media(tags, view.seen, tries=8)
+        result = await pick_media(tags, view.seen, tries=8, status_cb=on_status)
         image_url, md5, site, file, fname, error = result
         
         if not image_url or error != FetchError.NONE:
