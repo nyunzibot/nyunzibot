@@ -47,7 +47,7 @@ BOUNCE_BASE = "futa_on_female"
 # these are missing commas on purpose (as in original), which concatenates strings.
 PLAP_POSITIVE_SETS = [
     "sex_from_behind",
-    "bent_over"
+    "bent_over",
     "doggy_style",
     "mating_press",
     "standing_sex",
