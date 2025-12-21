@@ -448,6 +448,7 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                                 await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                                 continue
                             if resp.status != 200:
+                                log.info("[GEL PROBE] tier=%s status=%s (Retrying)", tier_label, resp.status)
                                 continue
 
                             data_probe = await resp.json(content_type=None)
@@ -460,10 +461,12 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                                 log.info("[GEL PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                             break
 
-                    except (aiohttp.ClientError, asyncio.TimeoutError):
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        log.info("[GEL PROBE] tier=%s attempt=%s failed: %s", tier_label, attempt, e)
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
-                    except Exception:
+                    except Exception as e:
+                        log.info("[GEL PROBE] tier=%s attempt=%s error: %s", tier_label, attempt, e)
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
             else:

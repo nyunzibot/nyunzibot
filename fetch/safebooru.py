@@ -70,6 +70,7 @@ async def fetch_image_safebooru(tags: str, avoid_md5s: set[str]) -> tuple[str, s
                                 await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                                 continue
                             if resp.status != 200:
+                                log.info("[SAFE PROBE] tier=%s status=%s (Retrying)", tier_label, resp.status)
                                 continue
 
                             xml_text = await resp.text()
@@ -84,7 +85,7 @@ async def fetch_image_safebooru(tags: str, avoid_md5s: set[str]) -> tuple[str, s
                                 log.info("[SAFE PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                             break
                     except Exception as e:
-                        log.warning("[SAFE FETCH] probe error: %s", e)
+                        log.warning("[SAFE PROBE] probe error: %s", e)
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
             else:

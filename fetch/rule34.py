@@ -423,10 +423,12 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                             log.info("[R34 PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                         break
 
-                    except (aiohttp.ClientError, asyncio.TimeoutError):
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        log.info("[R34 PROBE] tier=%s attempt=%s failed: %s", tier_label, attempt, e)
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
-                    except Exception:
+                    except Exception as e:
+                        log.info("[R34 PROBE] tier=%s attempt=%s error: %s", tier_label, attempt, e)
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
             else:

@@ -69,6 +69,7 @@ async def fetch_image_yandere(tags: str, avoid_md5s: set[str]) -> tuple[str, str
                                 await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                                 continue
                             if resp.status != 200:
+                                log.info("[YANDE PROBE] tier=%s status=%s (Retrying)", tier_label, resp.status)
                                 continue
 
                             xml_text = await resp.text()
@@ -83,7 +84,7 @@ async def fetch_image_yandere(tags: str, avoid_md5s: set[str]) -> tuple[str, str
                                 log.info("[YANDE PROBE] tier=%s status=%s count=None", tier_label, resp.status)
                             break
                     except Exception as e:
-                        log.warning("[YANDE FETCH] probe error: %s", e)
+                        log.warning("[YANDE PROBE] probe error: %s", e)
                         await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                         continue
             else:

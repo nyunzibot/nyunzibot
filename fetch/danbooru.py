@@ -68,8 +68,12 @@ async def fetch_image_danbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                                 break
                             elif resp.status == 429:
                                  await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                                 continue
+                            else:
+                                 log.info("[DAN PROBE] tier=%s status=%s (Retrying)", tier_label, resp.status)
+                        
                     except Exception as e:
-                        log.warning("[DAN FETCH] probe error: %s", e)
+                        log.warning("[DAN PROBE] probe error: %s", e)
                         continue
 
             if not count:
