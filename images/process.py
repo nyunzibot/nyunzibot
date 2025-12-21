@@ -9,7 +9,7 @@ from enum import Enum
 log = logging.getLogger("nyunzi")
 
 MAX_DISCORD_BYTES = 25_000_000
-MAX_DOWNLOAD_BYTES = 40_000_000
+MAX_DOWNLOAD_BYTES = 500_000_000
 
 
 class ProcessError(Enum):
