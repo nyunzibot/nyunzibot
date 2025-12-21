@@ -45,30 +45,30 @@ BOUNCE_BASE = "futa_on_female"
 # Rotate positives to avoid “same top few” posts
 # NOTE: Preserving the exact behavior from your original file:
 # these are missing commas on purpose (as in original), which concatenates strings.
-# PLAP_POSITIVE_SETS = [
-#     "sex_from_behind",
-#     "bent_over"
-#     "doggy_style",
-#     "mating_press",
-#     "standing_sex",
-#     "lifting_partner",
-#     "legs_over_head",
-#     "against_wall",
-#     "anal",
-#     "vaginal",
-#     "missionary",
-#     #"blush",
-#     "spooning",
-#     "grab_waist",
-#     "hair_pull",
-#     "looking_back",
-#     "mid_sex",
-#     "after_sex",
-#     "cum_inside",
-#     "creampie",
-#     "x-ray",
-#     "cross_section"
-# ]
+PLAP_POSITIVE_SETS = [
+    # "sex_from_behind",
+    # "bent_over"
+    # "doggy_style",
+    # "mating_press",
+    # "standing_sex",
+    # "lifting_partner",
+    # "legs_over_head",
+    # "against_wall",
+    # "anal",
+    # "vaginal",
+    # "missionary",
+    # #"blush",
+    # "spooning",
+    # "grab_waist",
+    # "hair_pull",
+    # "looking_back",
+    # "mid_sex",
+    # "after_sex",
+    # "cum_inside",
+    # "creampie",
+    # "x-ray",
+    # "cross_section"
+]
 
 BOUNCE_POSITIVE_SETS = [
     "cowgirl",
