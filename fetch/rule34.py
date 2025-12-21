@@ -413,7 +413,7 @@ async def fetch_image_rule34(tags: str, avoid_md5s: set[str]) -> tuple[str, str 
                             log.warning("[R34 FETCH] tier=%s XML parse error: %s", tier_label, e)
                             continue
 
-                        c = extract_attrs_count(root0)
+                        c = extract_count_from_root(root0)
                         if c is not None:
                             count = c
                             tier_pid_cap = count - 1
