@@ -2,3 +2,4 @@ discord.py
 aiohttp
 Pillow
 firebase-admin
+imageio-ffmpeg

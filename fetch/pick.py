@@ -100,20 +100,23 @@ async def pick_media(tags, seen, *, tries: int = 8):
             log.warning(f"[PICK_MEDIA] Processing retry also failed, trying different image")
             last_error = FetchError.PROCESSING_FAILED
         
-        # FILE_TOO_LARGE: Try compression for images, skip videos
+        # FILE_TOO_LARGE: Try compression (images AND videos now), then fallback for video
         elif process_error == ProcessError.FILE_TOO_LARGE:
+            log.info(f"[PICK_MEDIA] File/Video too large, trying compression...")
+            file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
+            
+            if file and fname:
+                log.info(f"[PICK_MEDIA] Compression succeeded!")
+                return (image_url, md5, site, file, fname, FetchError.NONE)
+            
+            # If compression failed (still too large or error)
             is_video = _is_video_url(image_url)
             if is_video:
-                log.warning(f"[PICK_MEDIA] Video too large ({image_url[:50]}...), trying different image")
-                last_error = FetchError.VIDEO_TOO_LARGE
-            else:
-                log.info(f"[PICK_MEDIA] File too large, trying compression...")
-                file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
-                if file and fname:
-                    log.info(f"[PICK_MEDIA] Compression succeeded!")
-                    return (image_url, md5, site, file, fname, FetchError.NONE)
-                log.warning(f"[PICK_MEDIA] Compression failed, trying different image")
-                last_error = FetchError.FILE_TOO_LARGE
+                log.info(f"[PICK_MEDIA] Video compression failed, falling back to URL")
+                return (image_url, md5, site, None, None, FetchError.NONE)
+            
+            log.warning(f"[PICK_MEDIA] Compression failed, trying different image")
+            last_error = FetchError.FILE_TOO_LARGE
         
         else:
             # Unknown error
