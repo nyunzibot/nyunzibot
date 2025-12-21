@@ -9,12 +9,10 @@ from bot.notify import send_dm_notify
 from views.plap_view import PlapBackView
 from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS, NEGATIVE_TAGS, ALLOWED_OVERRIDES, BASE_TAG_OPTIONS
-from fetch.pick import pick_image
-from images.process import process_image
+from fetch.pick import pick_media, FetchError, get_error_message
 from db.runtime import STATS_DB
 from text.plap_lines import PLAP_LINES_INTIMATE_NATURAL
-from text.summaries import plap_summary
-from fetch.pick import pick_media
+from ui.embeds import build_action_embed
 
 log = logging.getLogger("nyunzi")
 
@@ -126,13 +124,13 @@ def setup(bot: discord.Client):
 
         tags = build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS)
         tags = _apply_extra_to_ladder(tags, extra_tags or "")
-        picked = await pick_media(tags, view.seen, tries=8)
-        if not picked:
-            await interaction.followup.send("Couldn’t fetch an image right now 😭 Try again.", ephemeral=True)
+        result = await pick_media(tags, view.seen, tries=8)
+        image_url, md5, site, file, fname, error = result
+        
+        if not image_url or error != FetchError.NONE:
+            error_msg = get_error_message(error)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
-
-        image_url, md5, site, file, fname = picked
-        file, fname = await process_image(image_url, max_attempts=3)
 
         view.seen.add(md5)
         await STATS_DB.record_action("plap", interaction.user.id, target.id, is_back=False)
@@ -141,13 +139,17 @@ def setup(bot: discord.Client):
         target_total = int(totals.get("received", 0))
 
         line = random.choice(PLAP_LINES_INTIMATE_NATURAL).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**")
-        summary = plap_summary(interaction.user, target, count, target_total=target_total)
 
-        embed = discord.Embed(
-            description=f"{line}\n\n{summary}\n\n`source: {site}`",
-            color=discord.Color(0xFF9E80),
+        embed = build_action_embed(
+            action_type="plap",
+            actor=interaction.user,
+            target=target,
+            action_line=line,
+            pair_count=count,
+            target_total=target_total,
+            source=site,
+            is_back=False,
         )
-        embed.set_author(name=f"{interaction.user.display_name} used /plap", icon_url=interaction.user.display_avatar.url)
 
         if file and fname:
             # For jpg/gif, embed image attachment works.

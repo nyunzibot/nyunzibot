@@ -7,12 +7,12 @@ from bot.safe_defer import safe_defer
 from bot.notify import send_dm_notify
 from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import SUCC_BASE, SUCC_POSITIVE_SETS, NEGATIVE_TAGS
-from fetch.pick import pick_image
-from images.process import process_image
+from fetch.pick import pick_image, FetchError, get_error_message
+from images.process import process_image, ProcessError
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from text.succ_lines import SUCC_LINES_INTIMATE
-from text.summaries import succ_summary
+from ui.embeds import build_action_embed
 
 log = logging.getLogger("nyunzi")
 
@@ -90,7 +90,7 @@ class SuccBackView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS))
-        picked = await pick_image(tags, self.seen)
+        picked, fetch_error = await pick_image(tags, self.seen)
         if not picked:
             button.disabled = False
             button.label = f"Refresh ({remaining})"
@@ -98,12 +98,13 @@ class SuccBackView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            error_msg = get_error_message(fetch_error)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         image_url, md5, site = picked
 
-        file, fname = await process_image(image_url, max_attempts=3)
+        file, fname, process_error = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             button.disabled = False
             button.label = f"Refresh ({remaining})"
@@ -111,7 +112,13 @@ class SuccBackView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
+            if process_error == ProcessError.RATE_LIMITED:
+                error_msg = get_error_message(FetchError.RATE_LIMITED)
+            elif process_error == ProcessError.FILE_TOO_LARGE:
+                error_msg = get_error_message(FetchError.FILE_TOO_LARGE)
+            else:
+                error_msg = get_error_message(FetchError.PROCESSING_FAILED)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         self.seen.add(md5)
@@ -124,15 +131,18 @@ class SuccBackView(discord.ui.View):
             target=f"**{self.original_target.display_name}**"
         )
         count = await STATS_DB.get_pair_count("succ", self.original_actor.id, self.original_target.id)
-        summary = succ_summary(self.original_actor, self.original_target, count)
+        totals = await STATS_DB.get_user("succ", self.original_target.id)
+        target_total = int(totals.get("received", 0))
 
-        embed = discord.Embed(
-            description=f"{line}\n\n{summary}\n\n`source: {site}`",
-            color=discord.Color(0xFFA6C9),
-        )
-        embed.set_author(
-            name=f"{self.original_actor.display_name} used /succ",
-            icon_url=self.original_actor.display_avatar.url
+        embed = build_action_embed(
+            action_type="succ",
+            actor=self.original_actor,
+            target=self.original_target,
+            action_line=line,
+            pair_count=count,
+            target_total=target_total,
+            source=site,
+            is_back=False,
         )
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
@@ -180,7 +190,7 @@ class SuccBackView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(SUCC_BASE, SUCC_POSITIVE_SETS))
-        picked = await pick_image(tags, self.seen)
+        picked, fetch_error = await pick_image(tags, self.seen)
         if not picked:
             # restore button state on failure
             button.disabled = False
@@ -189,12 +199,13 @@ class SuccBackView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            error_msg = get_error_message(fetch_error)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         image_url, md5, site = picked
 
-        file, fname = await process_image(image_url, max_attempts=3)
+        file, fname, process_error = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             # restore button state on failure
             button.disabled = False
@@ -203,27 +214,36 @@ class SuccBackView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
+            if process_error == ProcessError.RATE_LIMITED:
+                error_msg = get_error_message(FetchError.RATE_LIMITED)
+            elif process_error == ProcessError.FILE_TOO_LARGE:
+                error_msg = get_error_message(FetchError.FILE_TOO_LARGE)
+            else:
+                error_msg = get_error_message(FetchError.PROCESSING_FAILED)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         self.seen.add(md5)
         await STATS_DB.record_action("succ", interaction.user.id, self.original_actor.id, is_back=True)
         count = await STATS_DB.get_pair_count("succ", interaction.user.id, self.original_actor.id)
+        totals = await STATS_DB.get_user("succ", self.original_actor.id)
+        target_total = int(totals.get("received", 0))
         self.count = count
 
         line = random.choice(SUCC_LINES_INTIMATE).format(
             actor=f"**{interaction.user.display_name}**",
             target=f"**{self.original_actor.display_name}**"
         )
-        summary = succ_summary(interaction.user, self.original_actor, count)
 
-        full_embed = discord.Embed(
-            description=f"{line}\n\n{summary}\n\n`source: {site}`",
-            color=discord.Color(0xFFA6C9),
-        )
-        full_embed.set_author(
-            name=f"{interaction.user.display_name} succs back",
-            icon_url=interaction.user.display_avatar.url
+        full_embed = build_action_embed(
+            action_type="succ",
+            actor=interaction.user,
+            target=self.original_actor,
+            action_line=line,
+            pair_count=count,
+            target_total=target_total,
+            source=site,
+            is_back=True,
         )
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):

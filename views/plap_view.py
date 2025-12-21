@@ -7,12 +7,12 @@ from bot.safe_defer import safe_defer
 from bot.notify import send_dm_notify
 from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import PLAP_BASE, PLAP_POSITIVE_SETS, NEGATIVE_TAGS
-from fetch.pick import pick_image
-from images.process import process_image
+from fetch.pick import pick_image, FetchError, get_error_message
+from images.process import process_image, ProcessError
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from text.plap_lines import PLAP_LINES_INTIMATE_NATURAL
-from text.summaries import plap_summary
+from ui.embeds import build_action_embed
 
 log = logging.getLogger("nyunzi")
 
@@ -90,7 +90,7 @@ class PlapBackView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS))
-        picked = await pick_image(tags, self.seen)
+        picked, fetch_error = await pick_image(tags, self.seen)
         if not picked:
             # restore button state
             button.disabled = False
@@ -99,12 +99,13 @@ class PlapBackView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            error_msg = get_error_message(fetch_error)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         image_url, md5, site = picked
 
-        file, fname = await process_image(image_url, max_attempts=3)
+        file, fname, process_error = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             # restore button state
             button.disabled = False
@@ -113,7 +114,14 @@ class PlapBackView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
+            # Map ProcessError to FetchError for user message
+            if process_error == ProcessError.RATE_LIMITED:
+                error_msg = get_error_message(FetchError.RATE_LIMITED)
+            elif process_error == ProcessError.FILE_TOO_LARGE:
+                error_msg = get_error_message(FetchError.FILE_TOO_LARGE)
+            else:
+                error_msg = get_error_message(FetchError.PROCESSING_FAILED)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         self.seen.add(md5)
@@ -128,13 +136,17 @@ class PlapBackView(discord.ui.View):
         count = await STATS_DB.get_pair_count("plap", self.original_actor.id, self.original_target.id)
         totals = await STATS_DB.get_user("plap", self.original_target.id)
         target_total = int(totals.get("received", 0))
-        summary = plap_summary(self.original_actor, self.original_target, count, target_total=target_total)
 
-        embed = discord.Embed(
-            description=f"{line}\n\n{summary}\n\n`source: {site}`",
-            color=discord.Color(0xFF9E80),
+        embed = build_action_embed(
+            action_type="plap",
+            actor=self.original_actor,
+            target=self.original_target,
+            action_line=line,
+            pair_count=count,
+            target_total=target_total,
+            source=site,
+            is_back=False,
         )
-        embed.set_author(name=f"{self.original_actor.display_name} used /plap", icon_url=self.original_actor.display_avatar.url)
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             embed.set_image(url=f"attachment://{fname}")
@@ -181,7 +193,7 @@ class PlapBackView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(PLAP_BASE, PLAP_POSITIVE_SETS))
-        picked = await pick_image(tags, self.seen)
+        picked, fetch_error = await pick_image(tags, self.seen)
         if not picked:
             # restore button state on failure
             button.disabled = False
@@ -190,12 +202,13 @@ class PlapBackView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            error_msg = get_error_message(fetch_error)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         image_url, md5, site = picked
 
-        file, fname = await process_image(image_url, max_attempts=3)
+        file, fname, process_error = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             # restore button state on failure
             button.disabled = False
@@ -204,7 +217,14 @@ class PlapBackView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
+            # Map ProcessError to FetchError for user message
+            if process_error == ProcessError.RATE_LIMITED:
+                error_msg = get_error_message(FetchError.RATE_LIMITED)
+            elif process_error == ProcessError.FILE_TOO_LARGE:
+                error_msg = get_error_message(FetchError.FILE_TOO_LARGE)
+            else:
+                error_msg = get_error_message(FetchError.PROCESSING_FAILED)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         self.seen.add(md5)
@@ -218,13 +238,17 @@ class PlapBackView(discord.ui.View):
             actor=f"**{interaction.user.display_name}**",
             target=f"**{self.original_actor.display_name}**"
         )
-        summary = plap_summary(interaction.user, self.original_actor, count, target_total=target_total)
 
-        full_embed = discord.Embed(
-            description=f"{line}\n\n{summary}\n\n`source: {site}`",
-            color=discord.Color(0xFF9E80),
+        full_embed = build_action_embed(
+            action_type="plap",
+            actor=interaction.user,
+            target=self.original_actor,
+            action_line=line,
+            pair_count=count,
+            target_total=target_total,
+            source=site,
+            is_back=True,
         )
-        full_embed.set_author(name=f"{interaction.user.display_name} plaps back", icon_url=interaction.user.display_avatar.url)
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             full_embed.set_image(url=f"attachment://{fname}")

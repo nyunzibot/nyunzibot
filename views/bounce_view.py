@@ -6,12 +6,12 @@ import asyncio
 from bot.safe_defer import safe_defer
 from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import BOUNCE_BASE, BOUNCE_POSITIVE_SETS, NEGATIVE_TAGS
-from fetch.pick import pick_image
-from images.process import process_image
+from fetch.pick import pick_image, FetchError, get_error_message
+from images.process import process_image, ProcessError
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from text.bounce_lines import BOUNCE_LINES
-from text.summaries import bounce_summary
+from ui.embeds import build_action_embed
 
 log = logging.getLogger("nyunzi")
 
@@ -90,7 +90,7 @@ class BounceView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(BOUNCE_BASE, BOUNCE_POSITIVE_SETS))
-        picked = await pick_image(tags, self.seen)
+        picked, fetch_error = await pick_image(tags, self.seen)
         if not picked:
             # restore button state
             button.disabled = False
@@ -99,12 +99,13 @@ class BounceView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Couldn’t fetch a new image right now 😭 Try again.", ephemeral=True)
+            error_msg = get_error_message(fetch_error)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         image_url, md5, site = picked
 
-        file, fname = await process_image(image_url, max_attempts=3)
+        file, fname, process_error = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             # restore button state
             button.disabled = False
@@ -113,7 +114,13 @@ class BounceView(discord.ui.View):
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            await interaction.followup.send("Media failed 😭 (download/convert)", ephemeral=True)
+            if process_error == ProcessError.RATE_LIMITED:
+                error_msg = get_error_message(FetchError.RATE_LIMITED)
+            elif process_error == ProcessError.FILE_TOO_LARGE:
+                error_msg = get_error_message(FetchError.FILE_TOO_LARGE)
+            else:
+                error_msg = get_error_message(FetchError.PROCESSING_FAILED)
+            await interaction.followup.send(error_msg, ephemeral=True)
             return
 
         self.seen.add(md5)
@@ -126,22 +133,19 @@ class BounceView(discord.ui.View):
             target=f"**{self.original_target.display_name}**"
         )
         count = await STATS_DB.get_pair_count("bounce", self.original_actor.id, self.original_target.id)
-        # Note: We aren't calculating target_total generally for refresh unless we want to, 
-        # but plap_view did it. Let's do it if logic permits, but plap_view reroll 
-        # calls get_user("plap", target.id). We'll assume "bounce" stats.
         totals = await STATS_DB.get_user("bounce", self.original_target.id)
         target_total = int(totals.get("received", 0))
-        
-        summary = bounce_summary(self.original_actor, self.original_target, count) # simplified arguments for bounce_summary?
-        # Wait, I defined bounce_summary to take 3 args (actor, target, count). 
-        # plap_summary takes target_total as optional. I didn't add target_total to bounce_summary.
-        # I will update bounce_summary logic if I want to use target_total, but for now I'll stick to 3.
 
-        embed = discord.Embed(
-            description=f"{line}\n\n{summary}\n\n`source: {site}`",
-            color=discord.Color(0xFF9E80),
+        embed = build_action_embed(
+            action_type="bounce",
+            actor=self.original_actor,
+            target=self.original_target,
+            action_line=line,
+            pair_count=count,
+            target_total=target_total,
+            source=site,
+            is_back=False,
         )
-        embed.set_author(name=f"{self.original_actor.display_name} used /bounce", icon_url=self.original_actor.display_avatar.url)
 
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             embed.set_image(url=f"attachment://{fname}")
