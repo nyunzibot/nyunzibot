@@ -70,12 +70,55 @@ def _compress_video_files(input_path: str, output_path: str, target_size: int) -
     """Returns the smallest size achieved. > target_size if failed."""
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     
-    # helper to run ffmpeg
-    def run_pass(scale_w, crf, preset):
+    # helper (integrated into main loop now)
+
+
+
+    # Calculate compression ratio needed
+    input_size = os.path.getsize(input_path)
+    ratio = input_size / target_size
+    
+    # Define Tiers: (Label, ScaleW, CRF, Preset)
+    # ScaleW=0 means original resolution (no scaling)
+    tiers = [
+        ("Light", 0, 23, "superfast"),       # ~1.5x reduction target
+        ("Moderate", 1280, 24, "superfast"), # ~3x reduction target
+        ("Aggressive", 854, 28, "ultrafast"),# ~6x reduction target
+        ("Potato", 640, 32, "ultrafast"),    # ~10x reduction target
+    ]
+
+    # Select starting tier based on required ratio
+    start_index = 0
+    if ratio > 4.0:
+        start_index = 2 # Start at Aggressive
+    elif ratio > 1.5:
+        start_index = 1 # Start at Moderate
+    else:
+        start_index = 0 # Start at Light (just over limit)
+
+    log.info(f"[COMPRESS VIDEO] Input: {input_size} bytes (Ratio: {ratio:.2f}). Starting at Tier {start_index} ({tiers[start_index][0]})")
+
+    best_size = 999_999_999
+
+    for i in range(start_index, len(tiers)):
+        label, scale, crf, preset = tiers[i]
+        
+        # If scale is 0, use -1:-1 to keep original resolution (or just don't scale? no, filter expects something)
+        # Actually run_pass uses f"scale={scale_w}:-2". If 0 passed, we need logic.
+        # Let's handle it inside loop:
+        
+        real_scale = scale
+        scale_filter = f"scale={real_scale}:-2"
+        if real_scale == 0:
+             # Just copy raw, or use iw? using -1:-1 is safer for keeping aspect
+             scale_filter = "scale=iw:-2" 
+
+        log.info(f"[COMPRESS VIDEO] trying {label} pass (crf={crf}, preset={preset})...")
+        
         cmd = [
             ffmpeg_exe, "-y",
             "-i", input_path,
-            "-vf", f"scale={scale_w}:-2",
+            "-vf", scale_filter,
             "-vcodec", "libx264",
             "-crf", str(crf),
             "-preset", preset,
@@ -83,27 +126,29 @@ def _compress_video_files(input_path: str, output_path: str, target_size: int) -
             "-b:a", "128k",
             output_path
         ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False, timeout=300, text=True, encoding='utf-8', errors='replace')
+            if res.returncode != 0:
+                log.warning(f"[COMPRESS VIDEO] FFmpeg error ({label}): {res.stderr[:200]}")
+                continue
+        except subprocess.TimeoutExpired:
+            log.warning(f"[COMPRESS VIDEO] FFmpeg timeout ({label})")
+            continue
+        except Exception as e:
+            log.warning(f"[COMPRESS VIDEO] Subprocess error ({label}): {e}")
+            continue
+
         if os.path.exists(output_path):
-            return os.path.getsize(output_path)
-        return 999_999_999
-
-    # 1. Moderate compression (Speed: superfast, CRF 24)
-    size = run_pass(1280, 24, "superfast")
-    if size <= target_size:
-        return True
-        
-    # 2. Aggressive (Speed: ultrafast, CRF 28)
-    size = run_pass(854, 28, "ultrafast")
-    if size <= target_size:
-        return True
-
-    # 3. Potato mode (Speed: ultrafast, CRF 32)
-    size = run_pass(640, 32, "ultrafast")
-    if size <= target_size:
-        return True
-        
-    return 999_999_999
+            s = os.path.getsize(output_path)
+            if s <= target_size:
+                return s
+            if s < best_size:
+                best_size = s
+                
+            log.info(f"[COMPRESS VIDEO] {label} pass result: {s} bytes (Target: {target_size}) - Too large")
+    
+    return best_size
 
 
 async def compress_video(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> discord.File | None:
