@@ -160,19 +160,26 @@ def setup(bot: discord.Client):
 
         try:
             if file and fname:
-                # For jpg/gif, embed image attachment works.
-                # For mp4/webm, embed.set_image won't display the video; better to send link instead.
+                # Log size for debugging
+                try:
+                    size = file.fp.getbuffer().nbytes
+                    log.info(f"[PLAP] Sending file {fname} ({size} bytes)")
+                except:
+                    pass
+
+                # For mp4/webm, embed.set_image won't display the video; better to send link instead? 
+                # Actually we attach the file.
                 if fname.endswith((".mp4", ".webm")):
-                    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
+                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
                 else:
                     embed.set_image(url=f"attachment://{fname}")
-                    msg = await interaction.followup.send(embed=embed, file=file, view=view, wait=True)
+                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
             else:
-                msg = await interaction.followup.send(content=image_url, embed=embed, view=view, wait=True)
+                msg = await interaction.edit_original_response(content=image_url, embed=embed, view=view)
         except HTTPException as e:
             if e.code == 40005:  # Payload Too Large
-                log.warning("[PLAP] File too large for Discord, sending URL instead")
-                msg = await interaction.followup.send(content=f"📦 File too large to attach\n{image_url}", embed=embed, view=view, wait=True)
+                log.warning(f"[PLAP] File too large for Discord (40005), sending URL instead. Error: {e}")
+                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{image_url}", embed=embed, attachments=[], view=view)
             else:
                 raise
 
