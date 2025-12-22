@@ -66,8 +66,8 @@ async def compress_image(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> di
     return await asyncio.to_thread(_compress, raw)
 
 
-def _compress_video_files(input_path: str, output_path: str, target_size: int) -> bool:
-    """True if successful, False otherwise."""
+def _compress_video_files(input_path: str, output_path: str, target_size: int) -> int:
+    """Returns the smallest size achieved. > target_size if failed."""
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     
     # helper to run ffmpeg
@@ -103,7 +103,7 @@ def _compress_video_files(input_path: str, output_path: str, target_size: int) -
     if size <= target_size:
         return True
         
-    return False
+    return 999_999_999
 
 
 async def compress_video(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> discord.File | None:
@@ -115,17 +115,18 @@ async def compress_video(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> di
                 tmp_in_path = tmp_in.name
             
             tmp_out_path = tmp_in_path + "_out.mp4"
+            final_size = 0
             
             try:
-                success = _compress_video_files(tmp_in_path, tmp_out_path, target_size)
-                if success:
+                final_size = _compress_video_files(tmp_in_path, tmp_out_path, target_size)
+                if final_size <= target_size:
                     # Read back
                     with open(tmp_out_path, "rb") as f:
                         processed_bytes = f.read()
                     log.info(f"[COMPRESS VIDEO] Success: {len(raw)} -> {len(processed_bytes)}")
                     return discord.File(io.BytesIO(processed_bytes), filename="action.mp4", spoiler=True)
                 else:
-                    log.warning("[COMPRESS VIDEO] Failed to compress small enough")
+                    log.warning(f"[COMPRESS VIDEO] Failed to compress small enough (best: {final_size} bytes)")
                     return None
             finally:
                 if os.path.exists(tmp_in_path):
@@ -214,6 +215,10 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
             return (discord.File(buf, filename=fname, spoiler=True), fname, ProcessError.NONE)
         
         # Too large? Try compression if enabled or aggressive
+        # Too large? Try compression only if aggressive (so we can notify user first)
+        if not aggressive_compress:
+            return (None, None, ProcessError.FILE_TOO_LARGE)
+
         log.info(f"[PROCESS] Video too large ({len(raw)}), attempting compression...")
         f = await compress_video(raw)
         if f:
