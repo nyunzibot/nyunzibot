@@ -105,7 +105,7 @@ async def pick_media(tags, seen, *, tries: int = 8, status_cb: Optional[Callable
         elif process_error == ProcessError.FILE_TOO_LARGE:
             log.info(f"[PICK_MEDIA] File/Video too large, trying compression...")
             if status_cb:
-                await status_cb(":loading: Compressing video...")
+                await status_cb("<a:loading:1453449271839031487> Compressing video...")
             
             file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
             
