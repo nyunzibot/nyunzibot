@@ -20,7 +20,7 @@ def mock_process_image():
 
 @pytest.fixture
 def mock_is_video_url():
-    with patch("fetch.pick._is_video_url") as m:
+    with patch("fetch.pick.is_video_url") as m:
         m.return_value = False
         yield m
 

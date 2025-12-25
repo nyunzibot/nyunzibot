@@ -10,7 +10,7 @@ from bot.notify import send_dm_notify
 from views.bounce_view import BounceView
 from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import BOUNCE_BASE, BOUNCE_POSITIVE_SETS, NEGATIVE_TAGS, ALLOWED_OVERRIDES, BASE_TAG_OPTIONS
-from fetch.pick import pick_media, FetchError, get_error_message
+from fetch.pick import pick_media, FetchError, get_error_message, is_video_url
 from db.runtime import STATS_DB
 from text.bounce_lines import BOUNCE_LINES
 from ui.embeds import build_action_embed
@@ -166,7 +166,11 @@ def setup(bot: discord.Client):
                     embed.set_image(url=f"attachment://{fname}")
                     msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
             else:
-                msg = await interaction.edit_original_response(content=image_url, embed=embed, view=view)
+                content = image_url
+                # Check for video compression fallback (no file but successful fetch)
+                if is_video_url(image_url):
+                     content = f"Video compression failed, falling back to URL\n{image_url}"
+                msg = await interaction.edit_original_response(content=content, embed=embed, view=view)
         except HTTPException as e:
             if e.code == 40005:  # Payload Too Large
                 log.warning("[BOUNCE] File too large for Discord (40005), sending URL instead")

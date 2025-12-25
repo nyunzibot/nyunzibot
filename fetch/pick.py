@@ -114,7 +114,7 @@ async def pick_media(tags, seen, *, tries: int = 8, status_cb: Optional[Callable
                 return (image_url, md5, site, file, fname, FetchError.NONE)
             
             # If compression failed (still too large or error)
-            is_video = _is_video_url(image_url)
+            is_video = is_video_url(image_url)
             if is_video:
                 log.info(f"[PICK_MEDIA] Video compression failed, falling back to URL")
                 return (image_url, md5, site, None, None, FetchError.NONE)
@@ -136,7 +136,7 @@ async def pick_media(tags, seen, *, tries: int = 8, status_cb: Optional[Callable
     return (None, None, None, None, None, last_error)
 
 
-def _is_video_url(url: str) -> bool:
+def is_video_url(url: str) -> bool:
     u = (url or "").lower().split("?")[0].split("#")[0]
     return u.endswith((".mp4", ".webm"))
 
