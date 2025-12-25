@@ -128,6 +128,12 @@ async def fetch_image_rule34us(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                 if md5 and md5 in avoid_md5s:
                     continue
                     
+                # Normalize CDN URLs to non-CDN versions (fixes DNS issues on some hosts)
+                # video-cdn1.rule34.us -> video.rule34.us
+                # img-cdn1.rule34.us -> img.rule34.us
+                media_url = re.sub(r'video-cdn\d*\.rule34\.us', 'video.rule34.us', media_url)
+                media_url = re.sub(r'img-cdn\d*\.rule34\.us', 'img.rule34.us', media_url)
+                    
                 log.info(f"[R34US] Picked {media_url} (md5={md5})")
                 return (media_url, md5, "rule34us")
 
