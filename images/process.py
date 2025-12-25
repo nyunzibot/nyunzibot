@@ -299,16 +299,25 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
 
     f = await asyncio.to_thread(pil_work, raw, aggressive_compress)
     
-    # If normal processing failed and we haven't tried aggressive compression, try it
-    if not f and not aggressive_compress:
-        log.info("[PROCESS] Normal processing failed, trying aggressive compression")
+    # If normal processing failed, try aggressive compression
+    # We do this if:
+    # 1. pil_work failed (returned None)
+    # 2. We haven't successfully returned yet
+    if not f:
+        log.info("[PROCESS] Normal processing failed (likely too large), trying aggressive compression")
         f = await compress_image(raw)
         if f:
             return (f, "action.jpg", ProcessError.NONE)
     
     if not f:
+        # If we still have no file, and the original raw was > MAX, it is definitely too large
+        if len(raw) > MAX_DISCORD_BYTES:
+             log.warning(f"[PROCESS] Compression failed for large file ({len(raw)}): {url[:80]}")
+             return (None, None, ProcessError.FILE_TOO_LARGE)
+        
         log.warning(f"[PROCESS] Processing failed for: {url[:80]}")
         return (None, None, ProcessError.PROCESSING_FAILED)
+    
     return (f, "action.jpg", ProcessError.NONE)
 
 
