@@ -1,6 +1,7 @@
 from .gelbooru import fetch_image_gelbooru
 from .rule34 import fetch_image_rule34
 from .rule34us import fetch_image_rule34us
+from .rule34video import fetch_image_rule34video
 from .safebooru import fetch_image_safebooru
 from .konachan import fetch_image_konachan
 from .yandere import fetch_image_yandere
@@ -16,7 +17,10 @@ async def fetch_image(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None,
     # res = await fetch_image_rule34(tags, avoid_md5s)
     # if res: return res
 
-    res = await fetch_image_rule34us(tags, avoid_md5s)
+    # res = await fetch_image_rule34us(tags, avoid_md5s)
+    # if res: return res
+
+    res = await fetch_image_rule34video(tags, avoid_md5s)
     if res: return res
     
     res = await fetch_image_safebooru(tags, avoid_md5s)

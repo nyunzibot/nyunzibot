@@ -24,6 +24,9 @@ RULE34_USER_ID = "5699450"
 # Rule34.us (Scraping)
 RULE34US_URL = "https://rule34.us"
 
+# Rule34Video (Scraping)
+RULE34VIDEO_URL = "https://rule34video.com"
+
 # Gelbooru (JSON for fetch, XML for count-probe)
 GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index" # &json=1 for fetch
 GELBOORU_API_KEY = "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e"
