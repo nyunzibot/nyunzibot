@@ -1,3 +1,4 @@
+
 from enum import Enum
 import logging
 from typing import Callable, Awaitable, Optional
@@ -6,6 +7,7 @@ from .fetch_image import fetch_image
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from images.process import process_image, ProcessError
+import time
 
 log = logging.getLogger("nyunzi")
 
@@ -53,9 +55,19 @@ async def pick_media(tags, seen, *, tries: int = 8, status_cb: Optional[Callable
     - VIDEO_TOO_LARGE: Try different image (can't easily compress videos)
     - RATE_LIMITED: Return immediately (waiting is required)
     """
+    start_time = time.time()
     last_error = FetchError.ALL_APIS_FAILED
     
     for attempt in range(tries):
+        # Check overall timeout (12 minutes) to prevent Discord 401 (15 min limit)
+        if time.time() - start_time > 720: 
+            log.warning(f"[PICK_MEDIA] Time limit reached ({int(time.time() - start_time)}s), stopping retries")
+            if 'image_url' in locals() and image_url:
+                 # If we have a URL from the previous attempt (which failed processing), use it as fallback
+                 log.info(f"[PICK_MEDIA] Falling back to URL due to timeout")
+                 return (image_url, md5, site, None, None, FetchError.NONE)
+            break
+
         picked, fetch_error = await pick_image(tags, seen)
         if not picked:
             last_error = fetch_error
@@ -130,6 +142,11 @@ async def pick_media(tags, seen, *, tries: int = 8, status_cb: Optional[Callable
         # Mark this image as seen so we don't retry it
         if md5:
             seen.add(md5)
+
+        # Check timeout again before retrying
+        if time.time() - start_time > 720:
+            log.warning("[PICK_MEDIA] Time limit reached after processing, falling back to URL")
+            return (image_url, md5, site, None, None, FetchError.NONE)
 
     # Exhausted all tries
     log.warning(f"[PICK_MEDIA] Exhausted {tries} attempts, last error: {last_error.value}")

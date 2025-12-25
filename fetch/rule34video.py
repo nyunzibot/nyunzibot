@@ -1,31 +1,34 @@
-import random
-import asyncio
-import aiohttp
 import re
 import logging
+import random
+import aiohttp
 from config import RULE34VIDEO_URL
-from .common import is_supported_file_url
+from fetch.common import is_supported_file_url
 
 log = logging.getLogger("nyunzi")
 
-# Regex to find video links from search page
-# href="https://rule34video.com/video/3510828/terasu-fan-animation/"
-RE_VIDEO_LINK = re.compile(r'href="(https?://rule34video\.com/video/\d+/[^"]+)"')
-
-# Regex to find video source URL on view page
-# contentUrl in JSON-LD schema: "contentUrl": "https://rule34video.com/get_file/.../...mp4/"
-RE_CONTENT_URL = re.compile(r'"contentUrl":\s*"(https?://[^"]+\.mp4[^"]*)"')
-# video_url in flashvars: video_url: 'function/0/https://rule34video.com/get_file/.../...mp4/...'
-RE_FLASHVARS_URL = re.compile(r"video_url:\s*'function/0/(https?://[^']+\.mp4[^']*)'")
-# get_file download link as fallback
-RE_GET_FILE = re.compile(r'href="(https?://rule34video\.com/get_file/[^"]+\.mp4[^"]*)"')
-
-
-async def fetch_image_rule34video(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
+async def fetch_image_rule34video(tags, avoid_md5s):
     """
-    Scraper-based fetcher for Rule34Video.com.
-    Returns video URLs (primarily MP4).
+    Scrape rule34video.com search results.
+    We need to scrape because there is no known public API.
+    
+    Strategy:
+    1. Search for tags (random page).
+    2. Extract video page links and DURATION from search results.
+    3. Filter out videos > 3 minutes.
+    4. Randomly pick a video page.
+    5. Fetch video page and extract 'contentUrl' (JSON-LD) or 'video_url' (flashvars).
     """
+    
+    # regex to find video pages in search results
+    RE_ITEM_URL = re.compile(r'href="(https?://rule34video\.com/video/\d+/[^"]+)"')
+    RE_ITEM_TIME = re.compile(r'<div class="time">([\d:]+)</div>')
+    
+    # regex to find video source in video page
+    RE_CONTENT_URL = re.compile(r'"contentUrl":\s*"(https?://[^"]+\.mp4[^"]*)"')
+    RE_FLASHVARS_URL = re.compile(r"video_url:\s*'function/0/(https?://[^']+\.mp4[^']*)'")
+    RE_GET_FILE = re.compile(r'href="(https?://rule34video\.com/get_file/[^"]+\.mp4[^"]*)"')
+    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -41,29 +44,63 @@ async def fetch_image_rule34video(tags: str, avoid_md5s: set[str]) -> tuple[str,
             
             # Search URL format
             search_url = f"{RULE34VIDEO_URL}/search/?q={tags}&page={page_num}"
-            html = ""
             
+            # Search page extraction
+            log.info(f"[R34VID] Searching page {page_num} for tags: {tags}")
             try:
                 async with session.get(search_url, timeout=15) as resp:
                     if resp.status != 200:
-                        log.info(f"[R34VID] Search failed: {resp.status}")
+                        log.warning(f"[R34VID] Failed to fetch search page: {resp.status}")
                         continue
+                    
                     html = await resp.text()
             except Exception as e:
                 log.warning(f"[R34VID] Search error: {e}")
                 continue
             
-            # Extract video page links
-            links = list(set(RE_VIDEO_LINK.findall(html)))
-            if not links:
-                log.info(f"[R34VID] No videos found for tags={tags} page={page_num}")
+            # Parse items from search page
+            # Split by item container to keep URL and Time together
+            raw_items = html.split('<div class="item thumb')
+            
+            valid_links = []
+            
+            for item_html in raw_items[1:]: # Skip preamble
+                # Extract URL
+                url_match = RE_ITEM_URL.search(item_html)
+                if not url_match:
+                    continue
+                url = url_match.group(1)
+                
+                # Extract Duration
+                time_match = RE_ITEM_TIME.search(item_html)
+                if time_match:
+                    time_str = time_match.group(1)
+                    try:
+                        parts = list(map(int, time_str.split(':')))
+                        duration = 0
+                        if len(parts) == 2: # MM:SS
+                            duration = parts[0] * 60 + parts[1]
+                        elif len(parts) == 3: # HH:MM:SS
+                            duration = parts[0] * 3600 + parts[1] * 60 + parts[2]
+                        
+                        # FILTER: Max 3 minutes (180 seconds)
+                        if duration > 180:
+                            # log.debug(f"Skipping video {url} (duration {time_str})")
+                            continue
+                    except ValueError:
+                        pass # Parsing failed, include it anyway
+                
+                valid_links.append(url)
+            
+            if not valid_links:
+                log.info(f"[R34VID] No matching videos (<= 3 mins) found on page {page_num}")
                 continue
             
-            log.info(f"[R34VID] Found {len(links)} video links on page {page_num}")
+            log.info(f"[R34VID] Found {len(valid_links)} valid video links (<= 3 mins) on page {page_num}")
             
-            random.shuffle(links)
+            random.shuffle(valid_links)
             
-            for video_page_url in links[:5]:  # Try up to 5 videos per search
+            for video_page_url in valid_links[:5]:  # Try up to 5 videos per search
                 try:
                     async with session.get(video_page_url, timeout=15) as resp:
                         if resp.status != 200:
