@@ -26,7 +26,7 @@ class ProcessError(Enum):
 
 
 def _ext_from_url(url: str) -> str:
-    u = (url or "").lower().split("?")[0].split("#")[0]
+    u = (url or "").lower().split("?")[0].split("#")[0].rstrip("/")
     for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm"):
         if u.endswith(ext):
             return ext

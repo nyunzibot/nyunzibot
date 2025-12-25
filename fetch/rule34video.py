@@ -121,7 +121,7 @@ async def fetch_image_rule34video(tags: str, avoid_md5s: set[str]) -> tuple[str,
                 if md5 and md5 in avoid_md5s:
                     continue
                 
-                log.info(f"[R34VID] Picked {media_url[:80]}... (id={md5})")
+                log.info(f"[R34VID] Picked {media_url} (id={md5})")
                 return (media_url, md5, "rule34video")
     
     return None
