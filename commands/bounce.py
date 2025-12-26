@@ -91,19 +91,40 @@ def _apply_extra_to_ladder(ladder: list[str], extra: str) -> list[str]:
             out.append(f"{base} {neg_suffix}".strip())
     return out
 
-async def extra_tags_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    """Autocomplete for extra_tags parameter."""
-    return [
-        app_commands.Choice(name=opt, value=opt)
-        for opt in BASE_TAG_OPTIONS if current.lower() in opt.lower()
-    ][:25]
+from fetch.tags import fetch_tag_suggestions
+
+async def tag_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    """
+    Autocomplete for extra_tags parameter.
+    1. If current is empty/short, show base options.
+    2. If typing, hit API for suggestions.
+    """
+    current = current.strip()
+    
+    # Check if we are typing a new word or editing an existing one
+    parts = current.split()
+    last_word = parts[-1] if parts else ""
+    
+    # If very short or empty, show defaults (filtered by last word)
+    if not last_word or len(last_word) < 2:
+        # Defaults
+        base_prefix = " ".join(parts[:-1])
+        choices = []
+        for opt in BASE_TAG_OPTIONS:
+             if last_word.lower() in opt.lower():
+                 val = f"{base_prefix} {opt}".strip()
+                 choices.append(app_commands.Choice(name=val, value=val))
+        return choices[:25]
+
+    # Else, fetch from API
+    return await fetch_tag_suggestions(current)
 
 def setup(bot: discord.Client):
     @bot.tree.command(name="bounce", description="Bounce on another user (DM only)")
     @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
     @app_commands.allowed_installs(users=True, guilds=False)
     @app_commands.describe(extra_tags="Extra tags to include (space-separated)")
-    @app_commands.autocomplete(extra_tags=extra_tags_autocomplete)
+    @app_commands.autocomplete(extra_tags=tag_autocomplete)
     async def bounce(interaction: discord.Interaction, target: discord.User, extra_tags: Optional[str] = None):
         # ACK FIRST (avoid 10062)
         ok = await safe_defer(interaction, thinking=True)
