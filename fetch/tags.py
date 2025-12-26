@@ -5,12 +5,16 @@ import time
 from typing import List, Dict, Tuple
 from config import GELBOORU_API_KEY, GELBOORU_USER_ID, USER_AGENT
 from discord import app_commands
+from tags.tag_sets import NEGATIVE_TAGS, ALLOWED_OVERRIDES
 
 log = logging.getLogger("nyunzi")
 
 # Cache structure: {prefix: (timestamp, [results])}
 _TAG_CACHE: Dict[str, Tuple[float, List[app_commands.Choice[str]]]] = {}
 CACHE_TTL = 300  # 5 minutes
+
+# Pre-process negative tags into a set for fast lookup
+_BLOCKED_TAGS = {t.lstrip("-") for t in NEGATIVE_TAGS.split()} - ALLOWED_OVERRIDES
 
 async def fetch_tag_suggestions(current: str) -> List[app_commands.Choice[str]]:
     """
@@ -76,6 +80,10 @@ async def fetch_tag_suggestions(current: str) -> List[app_commands.Choice[str]]:
                         name = t.get("name")
                         count = t.get("count", 0)
                         if name:
+                            # Filter out blocked tags
+                            if name.lower() in _BLOCKED_TAGS:
+                                continue
+
                             # Format: "tag_name (12k)"
                             label = f"{name} ({format_count(count)})"
                             choices.append(app_commands.Choice(name=label, value=name))
