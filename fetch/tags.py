@@ -80,8 +80,15 @@ async def fetch_tag_suggestions(current: str) -> List[app_commands.Choice[str]]:
                         name = t.get("name")
                         count = t.get("count", 0)
                         if name:
-                            # Filter out blocked tags
-                            if name.lower() in _BLOCKED_TAGS:
+                            # Filter out blocked tags (strict semantic check)
+                            # Check if matches exactly OR if any part of the tag is a blocked word
+                            # e.g. "loli_harem" -> parts ["loli", "harem"] -> "loli" is blocked -> SKIP
+                            # Normalize delimiters: replace ( ) with space, then split by space/underscore
+                            norm_name = name.lower().replace("(", " ").replace(")", " ").replace("_", " ")
+                            name_parts = set(norm_name.split())
+                            
+                            # If any intersection with blocked tags, skip
+                            if not name_parts.isdisjoint(_BLOCKED_TAGS):
                                 continue
 
                             # Format: "tag_name (12k)"
