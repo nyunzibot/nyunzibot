@@ -6,30 +6,28 @@ import asyncio
 
 from bot.safe_defer import safe_defer
 from tags.tag_builder import build_tag_ladder
-from tags.tag_sets import CUDDLE_BASE, CUDDLE_POSITIVE_SETS, NEGATIVE_TAGS_SFW
+from tags.tag_sets import PAT_BASE, PAT_POSITIVE_SETS, NEGATIVE_TAGS_SFW
 from fetch.pick_safebooru import pick_image_sfw, FetchError, get_error_message
 from images.process import process_image, ProcessError
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
-from text.cuddle_lines import CUDDLE_LINES
+from text.pat_lines import PAT_LINES
 from ui.embeds import build_action_embed
 
 log = logging.getLogger("nyunzi")
 
 
-class CuddleView(discord.ui.View):
+class PatView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User, extra_tags: str = ""):
         super().__init__(timeout=3600)
         self.original_actor = original_actor
         self.original_target = original_target
         self.extra_tags = " ".join((extra_tags or "").split()).strip()
-        self.count = 1
         self.message: discord.Message | None = None
         self.seen = InteractionSeen(original_actor.id, original_target.id)
         self.rerolls_left = 3
 
     def _apply_extra_to_ladder(self, ladder: list[str]) -> list[str]:
-        """Inject extra tags before NEGATIVE_TAGS_SFW suffix."""
         if not self.extra_tags:
             return ladder
         neg_suffix = (NEGATIVE_TAGS_SFW or "").strip()
@@ -62,7 +60,6 @@ class CuddleView(discord.ui.View):
         if not ok:
             return
 
-        # Only the original actor can reroll their own message
         if interaction.user.id != self.original_actor.id:
             await interaction.followup.send("Only the sender can refresh 🔄", ephemeral=True)
             return
@@ -72,7 +69,6 @@ class CuddleView(discord.ui.View):
             await interaction.followup.send("No rerolls left for this message 😤", ephemeral=True)
             return
 
-        # Loading animation
         button.disabled = True
         button.label = "Loading."
         try:
@@ -84,17 +80,15 @@ class CuddleView(discord.ui.View):
             await asyncio.sleep(0.6)
             button.label = "Loading.."
             await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
-
             await asyncio.sleep(0.6)
             button.label = "Loading..."
             await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
         except Exception:
             pass
 
-        tags = self._apply_extra_to_ladder(build_tag_ladder(CUDDLE_BASE, CUDDLE_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
+        tags = self._apply_extra_to_ladder(build_tag_ladder(PAT_BASE, PAT_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
         picked, fetch_error = await pick_image_sfw(tags, self.seen)
         if not picked:
-            # restore button state
             button.disabled = False
             button.label = f"Refresh ({remaining})"
             try:
@@ -106,10 +100,8 @@ class CuddleView(discord.ui.View):
             return
 
         image_url, md5, site = picked
-
         file, fname, process_error = await process_image(image_url, max_attempts=3)
         if not file or not fname:
-            # restore button state
             button.disabled = False
             button.label = f"Refresh ({remaining})"
             try:
@@ -130,16 +122,16 @@ class CuddleView(discord.ui.View):
         button.disabled = False
         button.label = f"Refresh ({self.rerolls_left})"
 
-        line = random.choice(CUDDLE_LINES).format(
+        line = random.choice(PAT_LINES).format(
             actor=f"**{self.original_actor.display_name}**",
             target=f"**{self.original_target.display_name}**"
         )
-        count = await STATS_DB.get_pair_count("cuddle", self.original_actor.id, self.original_target.id)
-        totals = await STATS_DB.get_user("cuddle", self.original_target.id)
+        count = await STATS_DB.get_pair_count("pat", self.original_actor.id, self.original_target.id)
+        totals = await STATS_DB.get_user("pat", self.original_target.id)
         target_total = int(totals.get("received", 0))
 
         embed = build_action_embed(
-            action_type="cuddle",
+            action_type="pat",
             actor=self.original_actor,
             target=self.original_target,
             action_line=line,
@@ -160,8 +152,8 @@ class CuddleView(discord.ui.View):
                 view=self
             )
         except HTTPException as e:
-            if e.code == 40005:  # Payload Too Large
-                log.warning("[CUDDLE VIEW] File too large for Discord")
+            if e.code == 40005:
+                log.warning("[PAT VIEW] File too large for Discord")
                 await interaction.followup.send("📦 File too large to attach. Try refreshing for a different image.", ephemeral=True)
             else:
                 if fname.lower().endswith((".mp4", ".webm")):

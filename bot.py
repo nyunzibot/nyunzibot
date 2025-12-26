@@ -10,6 +10,8 @@ from commands import succ as succ_cmd
 from commands import stats as stats_cmd
 from commands import bounce as bounce_cmd
 from commands import cuddle as cuddle_cmd
+from commands import kiss as kiss_cmd
+from commands import pat as pat_cmd
 
 def main():
     log = setup_logging()
@@ -33,6 +35,8 @@ def main():
     stats_cmd.setup(bot)
     bounce_cmd.setup(bot)
     cuddle_cmd.setup(bot)
+    kiss_cmd.setup(bot)
+    pat_cmd.setup(bot)
 
     @bot.event
     async def on_ready():

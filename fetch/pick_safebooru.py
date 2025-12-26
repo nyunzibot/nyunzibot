@@ -1,13 +1,13 @@
 """
-Safebooru-only pick module for SFW commands.
-This module provides image fetching exclusively from Safebooru.
+SFW pick module for cuddle command.
+This module provides image fetching from all booru sites with rating:safe filter.
 """
 
 from enum import Enum
 import logging
 from typing import Callable, Awaitable, Optional
 from config import DEDUP_PULL_TRIES
-from .safebooru import fetch_image_safebooru
+from .fetch_image import fetch_image  # Use all sites, not just Safebooru
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from images.process import process_image, ProcessError
@@ -33,14 +33,14 @@ def get_error_message(error: FetchError) -> str:
     """Convert FetchError to user-friendly message."""
     messages = {
         FetchError.NONE: "",
-        FetchError.NO_RESULTS: "No matching images found for those tags 🔍",
+        FetchError.NO_RESULTS: "No matching SFW images found for those tags 🔍",
         FetchError.ALL_SEEN: "You've seen all the images! Try different tags 🎲",
         FetchError.DOWNLOAD_FAILED: "Couldn't download the image (server issue) 🌐",
         FetchError.RATE_LIMITED: "API rate limit hit. Wait a moment and try again ⏳",
         FetchError.FILE_TOO_LARGE: "Image was too large for Discord (>25MB) 📦",
         FetchError.PROCESSING_FAILED: "Couldn't process the image 🖼️",
         FetchError.VIDEO_TOO_LARGE: "Video was too large to attach (>25MB) 🎬",
-        FetchError.ALL_APIS_FAILED: "Safebooru couldn't find any matching images. Try different tags 🔄",
+        FetchError.ALL_APIS_FAILED: "Couldn't find any matching SFW images. Try different tags 🔄",
     }
     return messages.get(error, "Something went wrong 😭 Try again.")
 
@@ -50,9 +50,9 @@ def is_video_url(url: str) -> bool:
     return u.endswith((".mp4", ".webm"))
 
 
-async def pick_media_safebooru(tags, seen, *, tries: int = 8, status_cb: Optional[Callable[[str], Awaitable[None]]] = None):
+async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Callable[[str], Awaitable[None]]] = None):
     """
-    Safebooru-only version of pick_media.
+    SFW version of pick_media - uses all booru sites with rating:safe tag.
     Returns: (image_url, md5, site, file, fname, error) tuple
     
     On success: (url, md5, site, file, fname, FetchError.NONE)
@@ -64,73 +64,73 @@ async def pick_media_safebooru(tags, seen, *, tries: int = 8, status_cb: Optiona
     for attempt in range(tries):
         # Check overall timeout (12 minutes) to prevent Discord 401 (15 min limit)
         if time.time() - start_time > 720: 
-            log.warning(f"[PICK_MEDIA_SAFE] Time limit reached ({int(time.time() - start_time)}s), stopping retries")
+            log.warning(f"[PICK_MEDIA_SFW] Time limit reached ({int(time.time() - start_time)}s), stopping retries")
             if 'image_url' in locals() and image_url:
-                 log.info(f"[PICK_MEDIA_SAFE] Falling back to URL due to timeout")
+                 log.info(f"[PICK_MEDIA_SFW] Falling back to URL due to timeout")
                  return (image_url, md5, site, None, None, FetchError.NONE)
             break
 
-        picked, fetch_error = await pick_image_safebooru(tags, seen)
+        picked, fetch_error = await pick_image_sfw(tags, seen)
         if not picked:
             last_error = fetch_error
-            log.warning(f"[PICK_MEDIA_SAFE] No image picked on attempt {attempt+1}/{tries}: {fetch_error.value}")
+            log.warning(f"[PICK_MEDIA_SFW] No image picked on attempt {attempt+1}/{tries}: {fetch_error.value}")
             return (None, None, None, None, None, last_error)
 
         image_url, md5, site = picked
-        log.info(f"[PICK_MEDIA_SAFE] Attempt {attempt+1}/{tries}: Picked image from {site}")
+        log.info(f"[PICK_MEDIA_SFW] Attempt {attempt+1}/{tries}: Picked image from {site}")
         
         # First attempt at processing
         file, fname, process_error = await process_image(image_url, max_attempts=3)
 
         # If first attempt succeeded, we're done!
         if file and fname:
-            log.info(f"[PICK_MEDIA_SAFE] Success on attempt {attempt+1}/{tries}")
+            log.info(f"[PICK_MEDIA_SFW] Success on attempt {attempt+1}/{tries}")
             return (image_url, md5, site, file, fname, FetchError.NONE)
         
         # Handle specific errors with smart retries
         if process_error == ProcessError.RATE_LIMITED:
-            log.warning(f"[PICK_MEDIA_SAFE] Rate limited, cannot retry")
+            log.warning(f"[PICK_MEDIA_SFW] Rate limited, cannot retry")
             return (None, None, None, None, None, FetchError.RATE_LIMITED)
         
         if process_error == ProcessError.DOWNLOAD_FAILED:
-            log.info(f"[PICK_MEDIA_SAFE] Download failed, retrying download...")
+            log.info(f"[PICK_MEDIA_SFW] Download failed, retrying download...")
             file, fname, process_error = await process_image(image_url, max_attempts=5)
             if file and fname:
-                log.info(f"[PICK_MEDIA_SAFE] Download retry succeeded!")
+                log.info(f"[PICK_MEDIA_SFW] Download retry succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
-            log.warning(f"[PICK_MEDIA_SAFE] Download retry also failed, trying different image")
+            log.warning(f"[PICK_MEDIA_SFW] Download retry also failed, trying different image")
             last_error = FetchError.DOWNLOAD_FAILED
         
         elif process_error == ProcessError.PROCESSING_FAILED:
-            log.info(f"[PICK_MEDIA_SAFE] Processing failed, retrying with compression...")
+            log.info(f"[PICK_MEDIA_SFW] Processing failed, retrying with compression...")
             file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
             if file and fname:
-                log.info(f"[PICK_MEDIA_SAFE] Processing retry with compression succeeded!")
+                log.info(f"[PICK_MEDIA_SFW] Processing retry with compression succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
-            log.warning(f"[PICK_MEDIA_SAFE] Processing retry also failed, trying different image")
+            log.warning(f"[PICK_MEDIA_SFW] Processing retry also failed, trying different image")
             last_error = FetchError.PROCESSING_FAILED
         
         elif process_error == ProcessError.FILE_TOO_LARGE:
-            log.info(f"[PICK_MEDIA_SAFE] File too large, trying compression...")
+            log.info(f"[PICK_MEDIA_SFW] File too large, trying compression...")
             if status_cb:
                 await status_cb("<a:loading:1453449271839031487> Compressing...")
             
             file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
             
             if file and fname:
-                log.info(f"[PICK_MEDIA_SAFE] Compression succeeded!")
+                log.info(f"[PICK_MEDIA_SFW] Compression succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
             
             # If compression failed for video, fall back to URL
             if is_video_url(image_url):
-                log.info(f"[PICK_MEDIA_SAFE] Video compression failed, falling back to URL")
+                log.info(f"[PICK_MEDIA_SFW] Video compression failed, falling back to URL")
                 return (image_url, md5, site, None, None, FetchError.NONE)
             
-            log.warning(f"[PICK_MEDIA_SAFE] Compression failed, trying different image")
+            log.warning(f"[PICK_MEDIA_SFW] Compression failed, trying different image")
             last_error = FetchError.FILE_TOO_LARGE
         
         else:
-            log.warning(f"[PICK_MEDIA_SAFE] Unknown error: {process_error}, trying different image")
+            log.warning(f"[PICK_MEDIA_SFW] Unknown error: {process_error}, trying different image")
             last_error = FetchError.PROCESSING_FAILED
         
         # Mark this image as seen so we don't retry it
@@ -139,18 +139,18 @@ async def pick_media_safebooru(tags, seen, *, tries: int = 8, status_cb: Optiona
 
         # Check timeout again before retrying
         if time.time() - start_time > 720:
-            log.warning("[PICK_MEDIA_SAFE] Time limit reached after processing, falling back to URL")
+            log.warning("[PICK_MEDIA_SFW] Time limit reached after processing, falling back to URL")
             return (image_url, md5, site, None, None, FetchError.NONE)
 
     # Exhausted all tries
-    log.warning(f"[PICK_MEDIA_SAFE] Exhausted {tries} attempts, last error: {last_error.value}")
+    log.warning(f"[PICK_MEDIA_SFW] Exhausted {tries} attempts, last error: {last_error.value}")
     return (None, None, None, None, None, last_error)
 
 
-async def pick_image_safebooru(tags: str | list[str], interaction_seen: InteractionSeen) -> tuple[tuple[str, str | None, str] | None, FetchError]:
+async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSeen) -> tuple[tuple[str, str | None, str] | None, FetchError]:
     """
-    Safebooru-only version of pick_image.
-    Uses only Safebooru as the image source.
+    SFW version of pick_image - uses all booru sites.
+    Tags should include rating:safe for SFW filtering.
     """
     md5s_in_memory = getattr(interaction_seen, "md5s", None)
     avoid = set(md5s_in_memory) if md5s_in_memory is not None else set(interaction_seen or [])
@@ -171,7 +171,7 @@ async def pick_image_safebooru(tags: str | list[str], interaction_seen: Interact
     for tag_query in tag_list:
         picked = None
         for _ in range(DEDUP_PULL_TRIES):
-            res = await fetch_image_safebooru(tag_query, avoid)
+            res = await fetch_image(tag_query, avoid)  # Uses all sites (Gelbooru -> Rule34 -> Safebooru -> etc.)
             if not res:
                 break
             url, md5, site = res

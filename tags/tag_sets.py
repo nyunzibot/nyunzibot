@@ -42,35 +42,41 @@ PLAP_BASE = "futa_on_female"
 SUCC_BASE = "futa_on_female"
 BOUNCE_BASE = "futa_on_female"
 
-# SFW Tags for Safebooru (cuddle command)
-CUDDLE_BASE = "2girls"  # Safe base that works well on Safebooru
+# SFW Tags for cuddle command (works on all sites with rating:safe)
+CUDDLE_BASE = "rating:safe"  # Safe rating filter for multi-site support
 CUDDLE_POSITIVE_SETS = [
     "hug",
     "cuddling",
     "embrace",
     "hugging",
-    "yuri",
     "hand_holding",
-    "lap_pillow",
-    "sleeping",
-    "petting",
-    "head_on_shoulder",
-    "leaning_on_person",
-    "princess_carry",
-    "cheek_to_cheek",
-    "nuzzle",
-    "smile",
-    "blush",
-    "closed_eyes",
-    "happy",
 ]
 
-# SFW negative tags for Safebooru (minimal, just quality filters)
+# SFW Tags for kiss command
+KISS_BASE = "rating:safe"
+KISS_POSITIVE_SETS = [
+    "kiss",
+    "kissing",
+    "french_kiss",
+    "cheek_kiss",
+    "forehead_kiss",
+]
+
+# SFW Tags for pat command
+PAT_BASE = "rating:safe"
+PAT_POSITIVE_SETS = [
+    "head_pat",
+    "headpat",
+    "petting",
+    "head_rub",
+]
+
+# SFW negative tags (quality filters)
 NEGATIVE_TAGS_SFW = (
     "-lowres -bad_anatomy -bad_hands -missing_fingers "
     "-extra_digits -fewer_digits -cropped -worst_quality "
-    "-low_quality -normal_quality -jpeg_artifacts -signature "
-    "-watermark -username -blurry"
+    "-low_quality -jpeg_artifacts -signature "
+    "-watermark -blurry"
 )
 
 # Rotate positives to avoid “same top few” posts
