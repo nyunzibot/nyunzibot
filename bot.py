@@ -9,6 +9,7 @@ from commands import plap as plap_cmd
 from commands import succ as succ_cmd
 from commands import stats as stats_cmd
 from commands import bounce as bounce_cmd
+from commands import cuddle as cuddle_cmd
 
 def main():
     log = setup_logging()
@@ -31,6 +32,7 @@ def main():
     succ_cmd.setup(bot)
     stats_cmd.setup(bot)
     bounce_cmd.setup(bot)
+    cuddle_cmd.setup(bot)
 
     @bot.event
     async def on_ready():

@@ -7,11 +7,17 @@ def build_tags(base: str, positives: list[str]) -> str:
     p = random.sample(positives, k=k)
     return f"{base} {' '.join(p)} {NEGATIVE_TAGS}".strip()
 
-def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
+def build_tag_ladder(base: str, positives: list[str], negative_tags: str = None) -> list[str]:
     """Tag fallback ladder:
     strict/high-quality -> relax step-by-step -> base only.
     Also optionally injects a rotating artist boost for quality.
+    
+    Args:
+        base: The base tag (e.g., "2girls")
+        positives: List of positive tags to sample from
+        negative_tags: Optional custom negative tags string (defaults to NEGATIVE_TAGS)
     """
+    neg = negative_tags if negative_tags is not None else NEGATIVE_TAGS
     artist = random.choice(ARTIST_BOOSTS) if ARTIST_BOOSTS else None
 
     quality_strict = []
@@ -31,5 +37,5 @@ def build_tag_ladder(base: str, positives: list[str]) -> list[str]:
     out: list[str] = []
     for parts in ladders:
         parts = [x for x in parts if x]
-        out.append(f"{' '.join(parts)} {NEGATIVE_TAGS}".strip())
+        out.append(f"{' '.join(parts)} {neg}".strip())
     return out

@@ -42,6 +42,37 @@ PLAP_BASE = "futa_on_female"
 SUCC_BASE = "futa_on_female"
 BOUNCE_BASE = "futa_on_female"
 
+# SFW Tags for Safebooru (cuddle command)
+CUDDLE_BASE = "2girls"  # Safe base that works well on Safebooru
+CUDDLE_POSITIVE_SETS = [
+    "hug",
+    "cuddling",
+    "embrace",
+    "hugging",
+    "yuri",
+    "hand_holding",
+    "lap_pillow",
+    "sleeping",
+    "petting",
+    "head_on_shoulder",
+    "leaning_on_person",
+    "princess_carry",
+    "cheek_to_cheek",
+    "nuzzle",
+    "smile",
+    "blush",
+    "closed_eyes",
+    "happy",
+]
+
+# SFW negative tags for Safebooru (minimal, just quality filters)
+NEGATIVE_TAGS_SFW = (
+    "-lowres -bad_anatomy -bad_hands -missing_fingers "
+    "-extra_digits -fewer_digits -cropped -worst_quality "
+    "-low_quality -normal_quality -jpeg_artifacts -signature "
+    "-watermark -username -blurry"
+)
+
 # Rotate positives to avoid “same top few” posts
 # NOTE: Preserving the exact behavior from your original file:
 # these are missing commas on purpose (as in original), which concatenates strings.
