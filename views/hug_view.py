@@ -6,18 +6,18 @@ import asyncio
 
 from bot.safe_defer import safe_defer
 from tags.tag_builder import build_tag_ladder
-from tags.tag_sets import PAT_BASE, PAT_POSITIVE_SETS, NEGATIVE_TAGS_SFW
+from tags.tag_sets import HUG_BASE, HUG_POSITIVE_SETS, NEGATIVE_TAGS_SFW
 from fetch.pick_safebooru import pick_image_sfw, FetchError, get_error_message
 from images.process import process_image, ProcessError
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
-from text.pat_lines import PAT_LINES
+from text.hug_lines import HUG_LINES
 from ui.embeds import build_action_embed
 
 log = logging.getLogger("nyunzi")
 
 
-class PatView(discord.ui.View):
+class HugView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User, extra_tags: str = ""):
         super().__init__(timeout=3600)
         self.original_actor = original_actor
@@ -86,7 +86,7 @@ class PatView(discord.ui.View):
         except Exception:
             pass
 
-        tags = self._apply_extra_to_ladder(build_tag_ladder(PAT_BASE, PAT_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
+        tags = self._apply_extra_to_ladder(build_tag_ladder(HUG_BASE, HUG_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
         picked, fetch_error = await pick_image_sfw(tags, self.seen)
         if not picked:
             button.disabled = False
@@ -122,16 +122,16 @@ class PatView(discord.ui.View):
         button.disabled = False
         button.label = f"Refresh ({self.rerolls_left})"
 
-        line = random.choice(PAT_LINES).format(
+        line = random.choice(HUG_LINES).format(
             actor=f"**{self.original_actor.display_name}**",
             target=f"**{self.original_target.display_name}**"
         )
-        count = await STATS_DB.get_pair_count("pat", self.original_actor.id, self.original_target.id)
-        totals = await STATS_DB.get_user("pat", self.original_target.id)
+        count = await STATS_DB.get_pair_count("hug", self.original_actor.id, self.original_target.id)
+        totals = await STATS_DB.get_user("hug", self.original_target.id)
         target_total = int(totals.get("received", 0))
 
         embed = build_action_embed(
-            action_type="pat",
+            action_type="hug",
             actor=self.original_actor,
             target=self.original_target,
             action_line=line,
@@ -153,21 +153,15 @@ class PatView(discord.ui.View):
             )
         except HTTPException as e:
             if e.code == 40005:
-                log.warning("[PAT VIEW] File too large for Discord")
-                await interaction.followup.send("📦 File too large to attach. Try refreshing for a different image.", ephemeral=True)
-            else:
-                if fname.lower().endswith((".mp4", ".webm")):
-                    await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
-                else:
-                    await interaction.followup.send(embed=embed, file=file, view=self)
-        except Exception:
-            if fname.lower().endswith((".mp4", ".webm")):
-                await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
+                log.warning("[HUG VIEW] File too large for Discord")
+                await interaction.followup.send("📦 File too large to attach. Try refreshing.", ephemeral=True)
             else:
                 await interaction.followup.send(embed=embed, file=file, view=self)
+        except Exception:
+            await interaction.followup.send(embed=embed, file=file, view=self)
 
-    @discord.ui.button(label="Pat back", emoji="✋", style=discord.ButtonStyle.primary)
-    async def pat_back(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Hug back", emoji="🤗", style=discord.ButtonStyle.primary)
+    async def hug_back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.original_target.id:
             try:
                 if interaction.response.is_done():
@@ -185,17 +179,17 @@ class PatView(discord.ui.View):
             return
 
         button.disabled = True
-        button.label = "Patted"
+        button.label = "Hugged"
         try:
             await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
         except Exception:
             pass
 
-        tags = self._apply_extra_to_ladder(build_tag_ladder(PAT_BASE, PAT_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
+        tags = self._apply_extra_to_ladder(build_tag_ladder(HUG_BASE, HUG_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
         picked, fetch_error = await pick_image_sfw(tags, self.seen)
         if not picked:
             button.disabled = False
-            button.label = "Pat back"
+            button.label = "Hug back"
             try:
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
@@ -208,7 +202,7 @@ class PatView(discord.ui.View):
         file, fname, process_error = await process_image(image_url, max_attempts=3)
         if not file or not fname:
             button.disabled = False
-            button.label = "Pat back"
+            button.label = "Hug back"
             try:
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
@@ -223,18 +217,18 @@ class PatView(discord.ui.View):
             return
 
         self.seen.add(md5)
-        await STATS_DB.record_action("pat", interaction.user.id, self.original_actor.id, is_back=True)
-        count = await STATS_DB.get_pair_count("pat", interaction.user.id, self.original_actor.id)
-        totals = await STATS_DB.get_user("pat", self.original_actor.id)
+        await STATS_DB.record_action("hug", interaction.user.id, self.original_actor.id, is_back=True)
+        count = await STATS_DB.get_pair_count("hug", interaction.user.id, self.original_actor.id)
+        totals = await STATS_DB.get_user("hug", self.original_actor.id)
         target_total = int(totals.get("received", 0))
 
-        line = random.choice(PAT_LINES).format(
+        line = random.choice(HUG_LINES).format(
             actor=f"**{interaction.user.display_name}**",
             target=f"**{self.original_actor.display_name}**"
         )
 
         full_embed = build_action_embed(
-            action_type="pat",
+            action_type="hug",
             actor=interaction.user,
             target=self.original_actor,
             action_line=line,
@@ -247,12 +241,12 @@ class PatView(discord.ui.View):
         if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
             full_embed.set_image(url=f"attachment://{fname}")
 
-        new_view = PatView(interaction.user, self.original_actor, extra_tags=self.extra_tags)
+        new_view = HugView(interaction.user, self.original_actor, extra_tags=self.extra_tags)
         new_view.seen = self.seen
 
         for item in new_view.children:
-            if isinstance(item, discord.ui.Button) and item.label == "Pat back":
-                item.label = "Pat again"
+            if isinstance(item, discord.ui.Button) and item.label == "Hug back":
+                item.label = "Hug again"
 
         try:
             msg = await interaction.edit_original_response(embed=full_embed, view=new_view, attachments=[file])
@@ -269,4 +263,3 @@ class PatView(discord.ui.View):
             except Exception:
                 msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
                 new_view.message = msg
-

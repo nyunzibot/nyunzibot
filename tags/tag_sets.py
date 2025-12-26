@@ -71,6 +71,24 @@ PAT_POSITIVE_SETS = [
     "head_rub",
 ]
 
+# SFW Tags for hug command
+HUG_BASE = "rating:safe"
+HUG_POSITIVE_SETS = [
+    "hug",
+    "hugging",
+    "embrace",
+    "glomp",
+]
+
+# SFW Tags for poke command
+POKE_BASE = "rating:safe"
+POKE_POSITIVE_SETS = [
+    "poking",
+    "poke",
+    "cheek_poking",
+    "forehead_poke",
+]
+
 # SFW negative tags (quality filters)
 NEGATIVE_TAGS_SFW = (
     "-lowres -bad_anatomy -bad_hands -missing_fingers "

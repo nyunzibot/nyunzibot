@@ -173,3 +173,108 @@ class CuddleView(discord.ui.View):
                 await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
             else:
                 await interaction.followup.send(embed=embed, file=file, view=self)
+
+    @discord.ui.button(label="Cuddle back", emoji="💕", style=discord.ButtonStyle.primary)
+    async def cuddle_back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.original_target.id:
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send("Not for you 😤", ephemeral=True)
+                else:
+                    await interaction.response.send_message("Not for you 😤", ephemeral=True)
+            except discord.InteractionResponded:
+                await interaction.followup.send("Not for you 😤", ephemeral=True)
+            return
+
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(thinking=True)
+        except Exception:
+            return
+
+        button.disabled = True
+        button.label = "Cuddled"
+        try:
+            await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+        except Exception:
+            pass
+
+        tags = self._apply_extra_to_ladder(build_tag_ladder(CUDDLE_BASE, CUDDLE_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
+        picked, fetch_error = await pick_image_sfw(tags, self.seen)
+        if not picked:
+            button.disabled = False
+            button.label = "Cuddle back"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
+            error_msg = get_error_message(fetch_error)
+            await interaction.followup.send(error_msg, ephemeral=True)
+            return
+
+        image_url, md5, site = picked
+        file, fname, process_error = await process_image(image_url, max_attempts=3)
+        if not file or not fname:
+            button.disabled = False
+            button.label = "Cuddle back"
+            try:
+                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
+            except Exception:
+                pass
+            if process_error == ProcessError.RATE_LIMITED:
+                error_msg = get_error_message(FetchError.RATE_LIMITED)
+            elif process_error == ProcessError.FILE_TOO_LARGE:
+                error_msg = get_error_message(FetchError.FILE_TOO_LARGE)
+            else:
+                error_msg = get_error_message(FetchError.PROCESSING_FAILED)
+            await interaction.followup.send(error_msg, ephemeral=True)
+            return
+
+        self.seen.add(md5)
+        await STATS_DB.record_action("cuddle", interaction.user.id, self.original_actor.id, is_back=True)
+        count = await STATS_DB.get_pair_count("cuddle", interaction.user.id, self.original_actor.id)
+        totals = await STATS_DB.get_user("cuddle", self.original_actor.id)
+        target_total = int(totals.get("received", 0))
+
+        line = random.choice(CUDDLE_LINES).format(
+            actor=f"**{interaction.user.display_name}**",
+            target=f"**{self.original_actor.display_name}**"
+        )
+
+        full_embed = build_action_embed(
+            action_type="cuddle",
+            actor=interaction.user,
+            target=self.original_actor,
+            action_line=line,
+            pair_count=count,
+            target_total=target_total,
+            source=site,
+            is_back=True,
+        )
+
+        if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            full_embed.set_image(url=f"attachment://{fname}")
+
+        new_view = CuddleView(interaction.user, self.original_actor, extra_tags=self.extra_tags)
+        new_view.seen = self.seen
+
+        for item in new_view.children:
+            if isinstance(item, discord.ui.Button) and item.label == "Cuddle back":
+                item.label = "Cuddle again"
+
+        try:
+            msg = await interaction.edit_original_response(embed=full_embed, view=new_view, attachments=[file])
+            new_view.message = msg
+        except HTTPException as e:
+            if e.code == 40005:
+                await interaction.followup.send("📦 File too large. Try again.", ephemeral=True)
+            else:
+                raise
+        except TypeError:
+            try:
+                msg = await interaction.edit_original_response(embed=full_embed, view=new_view, attachments=[file])
+                new_view.message = msg
+            except Exception:
+                msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
+                new_view.message = msg
+

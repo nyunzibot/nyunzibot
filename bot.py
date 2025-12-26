@@ -12,6 +12,8 @@ from commands import bounce as bounce_cmd
 from commands import cuddle as cuddle_cmd
 from commands import kiss as kiss_cmd
 from commands import pat as pat_cmd
+from commands import hug as hug_cmd
+from commands import poke as poke_cmd
 
 def main():
     log = setup_logging()
@@ -37,6 +39,8 @@ def main():
     cuddle_cmd.setup(bot)
     kiss_cmd.setup(bot)
     pat_cmd.setup(bot)
+    hug_cmd.setup(bot)
+    poke_cmd.setup(bot)
 
     @bot.event
     async def on_ready():
