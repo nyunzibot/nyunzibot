@@ -67,7 +67,7 @@ async def tag_autocomplete_safebooru(interaction: discord.Interaction, current: 
 
 
 def setup(bot: discord.Client):
-    @bot.tree.command(name="cuddle", description="Cuddle another user with cute anime images (SFW)")
+    @bot.tree.command(name="cuddle", description="[SFW] Cuddle another user with cute anime images")
     @app_commands.allowed_contexts(dms=True, guilds=True, private_channels=True)
     @app_commands.allowed_installs(users=True, guilds=True)
     @app_commands.describe(extra_tags="Extra tags to include (space-separated, Safebooru tags)")

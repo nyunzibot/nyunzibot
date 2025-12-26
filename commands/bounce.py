@@ -120,7 +120,7 @@ async def tag_autocomplete(interaction: discord.Interaction, current: str) -> li
     return await fetch_tag_suggestions(current)
 
 def setup(bot: discord.Client):
-    @bot.tree.command(name="bounce", description="Bounce on another user (DM only)")
+    @bot.tree.command(name="bounce", description="[NSFW] Bounce on another user (DM only)")
     @app_commands.allowed_contexts(dms=True, guilds=False, private_channels=True)
     @app_commands.allowed_installs(users=True, guilds=False)
     @app_commands.describe(extra_tags="Extra tags to include (space-separated)")

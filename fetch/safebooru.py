@@ -20,6 +20,9 @@ async def fetch_image_safebooru(tags: str, avoid_md5s: set[str]) -> tuple[str, s
     MAX_ATTEMPTS = 5
     PID_HARD_CAP = 200_000
 
+    # Strip rating:safe from tags - Safebooru is already SFW-only
+    tags = " ".join(t for t in tags.split() if not t.lower().startswith("rating:"))
+
     # Score tiers (Safebooru scores are low)
     SCORE_TIERS: list[int | None] = [100, 50, 20, 10, None]
 

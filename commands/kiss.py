@@ -54,7 +54,7 @@ async def tag_autocomplete_sfw(interaction: discord.Interaction, current: str) -
 
 
 def setup(bot: discord.Client):
-    @bot.tree.command(name="kiss", description="Kiss another user with cute anime images (SFW)")
+    @bot.tree.command(name="kiss", description="[SFW] Kiss another user with cute anime images")
     @app_commands.allowed_contexts(dms=True, guilds=True, private_channels=True)
     @app_commands.allowed_installs(users=True, guilds=True)
     @app_commands.describe(extra_tags="Extra tags to include (space-separated)")
