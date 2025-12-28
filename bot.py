@@ -14,6 +14,7 @@ from commands import kiss as kiss_cmd
 from commands import pat as pat_cmd
 from commands import hug as hug_cmd
 from commands import poke as poke_cmd
+from commands import tuck as tuck_cmd
 
 def main():
     log = setup_logging()
@@ -41,6 +42,7 @@ def main():
     pat_cmd.setup(bot)
     hug_cmd.setup(bot)
     poke_cmd.setup(bot)
+    tuck_cmd.setup(bot)
 
     @bot.event
     async def on_ready():

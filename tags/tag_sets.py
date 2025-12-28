@@ -89,6 +89,19 @@ POKE_POSITIVE_SETS = [
     "forehead_poke",
 ]
 
+# SFW Tags for tuck command
+TUCK_BASE = "rating:safe"
+TUCK_POSITIVE_SETS = [
+    "sleeping",
+    "blanket",
+    "in_bed",
+    "under_covers",
+    "pillow",
+    "sleep",
+    "cozy",
+    "tucking_in",
+]
+
 # SFW negative tags (quality filters)
 NEGATIVE_TAGS_SFW = (
     "-lowres -bad_anatomy -bad_hands -missing_fingers "
