@@ -100,7 +100,7 @@ class PokeView(discord.ui.View):
             return
 
         image_url, md5, site = picked
-        file, fname, process_error = await process_image(image_url, max_attempts=3)
+        file, fname, process_error = await process_image(image_url, max_attempts=3, spoiler=False)
         if not file or not fname:
             button.disabled = False
             button.label = f"Refresh ({remaining})"
@@ -199,7 +199,7 @@ class PokeView(discord.ui.View):
             return
 
         image_url, md5, site = picked
-        file, fname, process_error = await process_image(image_url, max_attempts=3)
+        file, fname, process_error = await process_image(image_url, max_attempts=3, spoiler=False)
         if not file or not fname:
             button.disabled = False
             button.label = "Poke back"

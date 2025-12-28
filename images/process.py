@@ -33,13 +33,13 @@ def _ext_from_url(url: str) -> str:
     return ""
 
 
-async def compress_image(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> discord.File | None:
+async def compress_image(raw: bytes, target_size: int = MAX_DISCORD_BYTES, spoiler: bool = True) -> discord.File | None:
     """
     Aggressively compress an image to fit within target_size.
     Tries progressively lower quality and smaller dimensions.
     Returns discord.File or None if compression fails.
     """
-    def _compress(b: bytes) -> discord.File | None:
+    def _compress(b: bytes, use_spoiler: bool) -> discord.File | None:
         try:
             # Try progressively more aggressive compression
             quality_levels = [75, 60, 45, 30, 20]
@@ -55,7 +55,7 @@ async def compress_image(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> di
                 
                 if out.getbuffer().nbytes <= target_size:
                     log.info(f"[COMPRESS] Success at quality={quality}, dims={dims}, size={out.getbuffer().nbytes}")
-                    return discord.File(out, filename="action.jpg", spoiler=True)
+                    return discord.File(out, filename="action.jpg", spoiler=use_spoiler)
             
             log.warning("[COMPRESS] Could not compress image small enough")
             return None
@@ -63,7 +63,7 @@ async def compress_image(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> di
             log.warning(f"[COMPRESS] PIL error: {type(e).__name__}: {e}")
             return None
     
-    return await asyncio.to_thread(_compress, raw)
+    return await asyncio.to_thread(_compress, raw, spoiler)
 
 
 def _compress_video_files(input_path: str, output_path: str, target_size: int) -> int:
@@ -151,9 +151,9 @@ def _compress_video_files(input_path: str, output_path: str, target_size: int) -
     return best_size
 
 
-async def compress_video(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> discord.File | None:
+async def compress_video(raw: bytes, target_size: int = MAX_DISCORD_BYTES, spoiler: bool = True) -> discord.File | None:
     """Write raw to temp, compress, return discord.File or None."""
-    def _work():
+    def _work(use_spoiler: bool):
         try:
             with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_in:
                 tmp_in.write(raw)
@@ -169,7 +169,7 @@ async def compress_video(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> di
                     with open(tmp_out_path, "rb") as f:
                         processed_bytes = f.read()
                     log.info(f"[COMPRESS VIDEO] Success: {len(raw)} -> {len(processed_bytes)}")
-                    return discord.File(io.BytesIO(processed_bytes), filename="action.mp4", spoiler=True)
+                    return discord.File(io.BytesIO(processed_bytes), filename="action.mp4", spoiler=use_spoiler)
                 else:
                     log.warning(f"[COMPRESS VIDEO] Failed to compress small enough (best: {final_size} bytes)")
                     return None
@@ -183,10 +183,10 @@ async def compress_video(raw: bytes, target_size: int = MAX_DISCORD_BYTES) -> di
             log.warning(f"[COMPRESS VIDEO] Error: {e}")
             return None
 
-    return await asyncio.to_thread(_work)
+    return await asyncio.to_thread(_work, spoiler)
 
 
-async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bool = False) -> tuple[discord.File | None, str | None, ProcessError]:
+async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bool = False, spoiler: bool = True) -> tuple[discord.File | None, str | None, ProcessError]:
     """
     Returns:
       (file_to_attach, attachment_name, error)
@@ -194,6 +194,7 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
     The error indicates what went wrong on failure.
     
     If aggressive_compress=True, will try harder to compress oversized images.
+    If spoiler=False, the file will not be marked as a spoiler (for SFW content).
     """
     if not url:
         log.warning("[PROCESS] No URL provided")
@@ -249,7 +250,7 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
             return (None, None, ProcessError.FILE_TOO_LARGE)
         buf = io.BytesIO(raw)
         buf.seek(0)
-        return (discord.File(buf, filename="action.gif", spoiler=True), "action.gif", ProcessError.NONE)
+        return (discord.File(buf, filename="action.gif", spoiler=spoiler), "action.gif", ProcessError.NONE)
 
     # ---- Video: attached if small, compress if large ----
     if ext in (".mp4", ".webm"):
@@ -257,7 +258,7 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
             buf = io.BytesIO(raw)
             buf.seek(0)
             fname = "action" + ext
-            return (discord.File(buf, filename=fname, spoiler=True), fname, ProcessError.NONE)
+            return (discord.File(buf, filename=fname, spoiler=spoiler), fname, ProcessError.NONE)
         
         # Too large? Try compression if enabled or aggressive
         # Too large? Try compression only if aggressive (so we can notify user first)
@@ -265,7 +266,7 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
             return (None, None, ProcessError.FILE_TOO_LARGE)
 
         log.info(f"[PROCESS] Video too large ({len(raw)}), attempting compression...")
-        f = await compress_video(raw)
+        f = await compress_video(raw, spoiler=spoiler)
         if f:
              return (f, "action.mp4", ProcessError.NONE)
              
@@ -273,7 +274,7 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
         return (None, None, ProcessError.FILE_TOO_LARGE)
 
     # ---- Images: convert to JPEG ----
-    def pil_work(b: bytes, compress_hard: bool) -> discord.File | None:
+    def pil_work(b: bytes, compress_hard: bool, use_spoiler: bool) -> discord.File | None:
         try:
             image = Image.open(io.BytesIO(b)).convert("RGB")
             
@@ -292,12 +293,12 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
             if out.getbuffer().nbytes > MAX_DISCORD_BYTES:
                 return None
 
-            return discord.File(out, filename="action.jpg", spoiler=True)
+            return discord.File(out, filename="action.jpg", spoiler=use_spoiler)
         except Exception as e:
             log.warning("[PROCESS] PIL error: %s: %s", type(e).__name__, e)
             return None
 
-    f = await asyncio.to_thread(pil_work, raw, aggressive_compress)
+    f = await asyncio.to_thread(pil_work, raw, aggressive_compress, spoiler)
     
     # If normal processing failed, try aggressive compression
     # We do this if:
@@ -305,7 +306,7 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
     # 2. We haven't successfully returned yet
     if not f:
         log.info("[PROCESS] Normal processing failed (likely too large), trying aggressive compression")
-        f = await compress_image(raw)
+        f = await compress_image(raw, spoiler=spoiler)
         if f:
             return (f, "action.jpg", ProcessError.NONE)
     

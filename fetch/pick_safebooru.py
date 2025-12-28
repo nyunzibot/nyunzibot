@@ -79,8 +79,8 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
         image_url, md5, site = picked
         log.info(f"[PICK_MEDIA_SFW] Attempt {attempt+1}/{tries}: Picked image from {site}")
         
-        # First attempt at processing
-        file, fname, process_error = await process_image(image_url, max_attempts=3)
+        # First attempt at processing - SFW content is not spoilered
+        file, fname, process_error = await process_image(image_url, max_attempts=3, spoiler=False)
 
         # If first attempt succeeded, we're done!
         if file and fname:
@@ -94,7 +94,7 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
         
         if process_error == ProcessError.DOWNLOAD_FAILED:
             log.info(f"[PICK_MEDIA_SFW] Download failed, retrying download...")
-            file, fname, process_error = await process_image(image_url, max_attempts=5)
+            file, fname, process_error = await process_image(image_url, max_attempts=5, spoiler=False)
             if file and fname:
                 log.info(f"[PICK_MEDIA_SFW] Download retry succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
@@ -103,7 +103,7 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
         
         elif process_error == ProcessError.PROCESSING_FAILED:
             log.info(f"[PICK_MEDIA_SFW] Processing failed, retrying with compression...")
-            file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
+            file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True, spoiler=False)
             if file and fname:
                 log.info(f"[PICK_MEDIA_SFW] Processing retry with compression succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
@@ -115,7 +115,7 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             if status_cb:
                 await status_cb("<a:loading:1453449271839031487> Compressing...")
             
-            file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True)
+            file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True, spoiler=False)
             
             if file and fname:
                 log.info(f"[PICK_MEDIA_SFW] Compression succeeded!")
