@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="8" skipped="0" tests="37" time="1.184" timestamp="2025-12-26T21:59:00.261505-05:00" hostname="DESKTOP-PLG5ORJ"><testcase classname="tests.test_api_fetchers" name="test_safebooru_fetch_success" time="0.007"><failure message="assert None is not None">mock_aiohttp = &lt;AsyncMock name='ClientSession().__aenter__()' id='2963692655280'&gt;
+avoid_set = set()
+
+    @pytest.mark.asyncio
+    async def test_safebooru_fetch_success(mock_aiohttp, avoid_set):
+        # Safebooru: read() -&gt; json()
+        # Use MagicMock for response object to ensure sync attributes (status) work 100%
+        xml_resp = MagicMock()
+        xml_resp.read = AsyncMock()
+        xml_resp.read.return_value = b'&lt;posts count="100" offset="0"&gt;&lt;/posts&gt;'
+        xml_resp.status = 200
+    
+        json_resp = MagicMock()
+        json_resp.json = AsyncMock()
+        json_resp.json.return_value = [
+            {"image": "img.jpg", "directory": "dir", "hash": "md5", "score": 100}
+        ]
+        json_resp.status = 200
+    
+        cm = mock_aiohttp.get.return_value
+        cm.__aenter__.side_effect = [xml_resp, json_resp]
+    
+        res = await fetch_image_safebooru("tags", avoid_set)
+&gt;       assert res is not None
+E       assert None is not None
+
+tests\test_api_fetchers.py:41: AssertionError</failure></testcase><testcase classname="tests.test_api_fetchers" name="test_gelbooru_fetch_success" time="0.005"><failure message="assert None is not None">mock_aiohttp = &lt;AsyncMock name='ClientSession().__aenter__()' id='2963693504560'&gt;
+avoid_set = set()
+
+    @pytest.mark.asyncio
+    async def test_gelbooru_fetch_success(mock_aiohttp, avoid_set):
+        # Gelbooru: text() -&gt; json()
+        xml_resp = MagicMock()
+        xml_resp.text = AsyncMock()
+        xml_resp.text.return_value = '&lt;posts count="50" offset="0"&gt;&lt;/posts&gt;'
+        xml_resp.status = 200
+    
+        json_resp = MagicMock()
+        json_resp.json = AsyncMock()
+        json_resp.json.return_value = {
+            "post": [{"file_url": "http://img.url", "md5": "md5", "score": 10}]
+        }
+        json_resp.status = 200
+    
+        cm = mock_aiohttp.get.return_value
+        cm.__aenter__.side_effect = [xml_resp, json_resp]
+    
+        res = await fetch_image_gelbooru("tags", avoid_set)
+&gt;       assert res is not None
+E       assert None is not None
+
+tests\test_api_fetchers.py:62: AssertionError</failure></testcase><testcase classname="tests.test_api_fetchers" name="test_rule34_fetch_success" time="0.005"><failure message="assert None is not None">mock_aiohttp = &lt;AsyncMock name='ClientSession().__aenter__()' id='2963693512624'&gt;
+avoid_set = set()
+
+    @pytest.mark.asyncio
+    async def test_rule34_fetch_success(mock_aiohttp, avoid_set):
+        # Rule34: read() -&gt; json()
+        xml_resp = MagicMock()
+        xml_resp.read = AsyncMock()
+        xml_resp.read.return_value = b'&lt;posts count="20" offset="0"&gt;&lt;/posts&gt;'
+        xml_resp.status = 200
+    
+        json_resp = MagicMock()
+        json_resp.json = AsyncMock()
+        json_resp.json.return_value = [
+            {"file_url": "http://r34.url/img.jpg", "hash": "md5", "score": 5}
+        ]
+        json_resp.status = 200
+    
+        cm = mock_aiohttp.get.return_value
+        cm.__aenter__.side_effect = [xml_resp, json_resp]
+    
+        res = await fetch_image_rule34("tags", avoid_set)
+&gt;       assert res is not None
+E       assert None is not None
+
+tests\test_api_fetchers.py:83: AssertionError</failure></testcase><testcase classname="tests.test_api_fetchers" name="test_fetch_no_results" time="0.005" /><testcase classname="tests.test_bot" name="test_bot_startup" time="0.121" /><testcase classname="tests.test_bot" name="test_bot_on_ready" time="0.005" /><testcase classname="tests.test_commands_nsfw" name="test_nsfw_commands_success" time="0.008"><failure message="TypeError: object MagicMock can't be used in 'await' expression">mock_interaction = (&lt;AsyncMock id='2963695338224'&gt;, &lt;MagicMock id='2963695341920'&gt;)
+mock_all_pickers_nsfw = (&lt;AsyncMock name='pick_media' id='2963695342256'&gt;, &lt;AsyncMock name='pick_media' id='2963694872496'&gt;, &lt;AsyncMock name='pick_media' id='2963694872160'&gt;)
+mock_bot_capture = (&lt;MagicMock id='2963694871824'&gt;, {'bounce': &lt;MagicMock name='mock.app_commands.allowed_contexts()()' id='2963694866784...ntexts()()' id='2963694866784'&gt;, 'succ': &lt;MagicMock name='mock.app_commands.allowed_contexts()()' id='2963694866784'&gt;})
+
+    @pytest.mark.asyncio
+    async def test_nsfw_commands_success(mock_interaction, mock_all_pickers_nsfw, mock_bot_capture):
+        bot, captured = mock_bot_capture
+        (m_plap, m_succ, m_bounce) = mock_all_pickers_nsfw
+    
+        valid_media = ("http://url.com/img.jpg", "md5", "gelbooru", MagicMock(), "img.jpg", FetchError.NONE)
+        m_plap.return_value = valid_media
+        m_succ.return_value = valid_media
+        m_bounce.return_value = valid_media
+    
+        # Forces fresh import logic if we deleted modules
+        from commands import plap, succ, bounce
+        plap.setup(bot)
+        succ.setup(bot)
+        bounce.setup(bot)
+    
+        interaction, target = mock_interaction
+    
+&gt;       await captured["plap"](interaction, target, extra_tags=None)
+E       TypeError: object MagicMock can't be used in 'await' expression
+
+tests\test_commands_nsfw.py:62: TypeError</failure></testcase><testcase classname="tests.test_commands_nsfw" name="test_plap_self_target" time="0.003"><failure message="TypeError: object MagicMock can't be used in 'await' expression">mock_interaction = (&lt;AsyncMock id='2963694862752'&gt;, &lt;MagicMock id='2963694041952'&gt;)
+mock_bot_capture = (&lt;MagicMock id='2963694041616'&gt;, {'plap': &lt;MagicMock name='mock.app_commands.allowed_contexts()()' id='2963694866784'&gt;})
+
+    @pytest.mark.asyncio
+    async def test_plap_self_target(mock_interaction, mock_bot_capture):
+        bot, captured = mock_bot_capture
+        from commands import plap
+        plap.setup(bot)
+    
+        interaction, target = mock_interaction
+        target.id = interaction.user.id
+    
+&gt;       await captured["plap"](interaction, target)
+E       TypeError: object MagicMock can't be used in 'await' expression
+
+tests\test_commands_nsfw.py:81: TypeError</failure></testcase><testcase classname="tests.test_commands_sfw" name="test_sfw_commands_success" time="0.005"><failure message="TypeError: object MagicMock can't be used in 'await' expression">mock_interaction = (&lt;AsyncMock id='2963694038928'&gt;, &lt;MagicMock id='2963694034224'&gt;)
+mock_all_pickers = (&lt;AsyncMock name='pick_media_sfw' id='2963694027840'&gt;, &lt;AsyncMock name='pick_media_sfw' id='2963694028176'&gt;, &lt;AsyncMoc...94027504'&gt;, &lt;AsyncMock name='pick_media_sfw' id='2963693511952'&gt;, &lt;AsyncMock name='pick_media_sfw' id='2963693511280'&gt;)
+mock_bot_capture = (&lt;MagicMock id='2963693503888'&gt;, {'cuddle': &lt;MagicMock name='mock.app_commands.allowed_contexts()()' id='2963694866784...ts()()' id='2963694866784'&gt;, 'pat': &lt;MagicMock name='mock.app_commands.allowed_contexts()()' id='2963694866784'&gt;, ...})
+
+    @pytest.mark.asyncio
+    async def test_sfw_commands_success(mock_interaction, mock_all_pickers, mock_bot_capture):
+        bot, captured = mock_bot_capture
+        (m_cuddle, m_kiss, m_pat, m_hug, m_poke) = mock_all_pickers
+    
+        valid_media = ("http://url.com/img.jpg", "md5", "safebooru", MagicMock(), "img.jpg", FetchError.NONE)
+        for m in (m_cuddle, m_kiss, m_pat, m_hug, m_poke):
+            m.return_value = valid_media
+    
+        from commands import cuddle, kiss, pat, hug, poke
+        cuddle.setup(bot)
+        kiss.setup(bot)
+        pat.setup(bot)
+        hug.setup(bot)
+        poke.setup(bot)
+    
+        interaction, target = mock_interaction
+    
+&gt;       await captured["cuddle"](interaction, target, extra_tags=None)
+E       TypeError: object MagicMock can't be used in 'await' expression
+
+tests\test_commands_sfw.py:54: TypeError</failure></testcase><testcase classname="tests.test_commands_sfw" name="test_sfw_commands_self_target" time="0.003"><failure message="TypeError: object MagicMock can't be used in 'await' expression">mock_interaction = (&lt;AsyncMock id='2963692654608'&gt;, &lt;MagicMock id='2963695345952'&gt;)
+mock_bot_capture = (&lt;MagicMock id='2963695346288'&gt;, {'cuddle': &lt;MagicMock name='mock.app_commands.allowed_contexts()()' id='2963694866784'&gt;})
+
+    @pytest.mark.asyncio
+    async def test_sfw_commands_self_target(mock_interaction, mock_bot_capture):
+        bot, captured = mock_bot_capture
+        from commands import cuddle
+        cuddle.setup(bot)
+    
+        interaction, target = mock_interaction
+        target.id = interaction.user.id
+    
+&gt;       await captured["cuddle"](interaction, target)
+E       TypeError: object MagicMock can't be used in 'await' expression
+
+tests\test_commands_sfw.py:69: TypeError</failure></testcase><testcase classname="tests.test_core_logic" name="test_tag_sets_integrity" time="0.001"><failure message="assert 0 &gt; 0&#10; +  where 0 = len([])">def test_tag_sets_integrity():
+&gt;       assert len(BASE_TAG_OPTIONS) &gt; 0
+E       assert 0 &gt; 0
+E        +  where 0 = len([])
+
+tests\test_core_logic.py:9: AssertionError</failure></testcase><testcase classname="tests.test_core_logic" name="test_text_lines_integrity" time="0.001" /><testcase classname="tests.test_core_logic" name="test_build_tag_ladder" time="0.001" /><testcase classname="tests.test_database" name="test_interaction_seen_logic" time="0.002" /><testcase classname="tests.test_database" name="test_stats_db_methods" time="0.001" /><testcase classname="tests.test_fetch_common" name="test_is_supported_file_url" time="0.001" /><testcase classname="tests.test_fetch_common" name="test_size_ok" time="0.001" /><testcase classname="tests.test_fetch_common" name="test_should_lower_limit" time="0.001" /><testcase classname="tests.test_fetch_common" name="test_pid_max_for" time="0.001" /><testcase classname="tests.test_pick_media" name="test_pick_media_success" time="0.004" /><testcase classname="tests.test_pick_media" name="test_pick_media_rate_limited" time="0.002" /><testcase classname="tests.test_pick_media" name="test_pick_media_download_failed_retry_success" time="0.026" /><testcase classname="tests.test_pick_media" name="test_pick_media_download_failed_retry_fail" time="0.003" /><testcase classname="tests.test_pick_media" name="test_pick_media_processing_failed_compress_success" time="0.002" /><testcase classname="tests.test_pick_media" name="test_pick_media_video_too_large_fallback" time="0.002" /><testcase classname="tests.test_pick_sfw" name="test_pick_media_sfw_success" time="0.002" /><testcase classname="tests.test_pick_sfw" name="test_pick_media_sfw_all_failure" time="0.002" /><testcase classname="tests.test_plap_logic" name="test_normalize_extra_tags" time="0.001" /><testcase classname="tests.test_plap_logic" name="test_validate_extra_tags" time="0.001" /><testcase classname="tests.test_plap_logic" name="test_apply_extra_to_ladder" time="0.001" /><testcase classname="tests.test_process" name="test_process_image_success" time="0.004" /><testcase classname="tests.test_process" name="test_process_image_download_failed" time="0.004" /><testcase classname="tests.test_process" name="test_process_image_too_large" time="0.533" /><testcase classname="tests.test_process" name="test_process_video_compress_success" time="0.014" /><testcase classname="tests.test_views" name="test_view_permissions" time="0.004" /><testcase classname="tests.test_views" name="test_view_timeout" time="0.003" /><testcase classname="tests.test_views" name="test_view_interactions" time="0.002"><error message="failed on setup with &quot;AttributeError: &lt;module 'views.plap_view' from 'C:\\Users\\Rohan Chopra\\Documents\\nyunzibot\\views\\plap_view.py'&gt; does not have the attribute 'pick_media'&quot;">@pytest.fixture
+    def mock_all_pickers_views():
+        p1 = patch("views.plap_view.pick_media", new_callable=AsyncMock)
+        p2 = patch("views.cuddle_view.pick_media_sfw", new_callable=AsyncMock)
+    
+&gt;       m1 = p1.start()
+             ^^^^^^^^^^
+
+tests\test_views.py:10: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\unittest\mock.py:1654: in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;unittest.mock._patch object at 0x000002B209F7B690&gt;
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+&gt;           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: &lt;module 'views.plap_view' from 'C:\\Users\\Rohan Chopra\\Documents\\nyunzibot\\views\\plap_view.py'&gt; does not have the attribute 'pick_media'
+
+C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\Lib\unittest\mock.py:1467: AttributeError</error></testcase></testsuite></testsuites>
