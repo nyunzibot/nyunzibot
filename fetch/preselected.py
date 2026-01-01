@@ -94,43 +94,61 @@ async def fetch_preselected(category: str, avoid_md5s: set[str]) -> tuple[list[s
     if not items:
         return None
     
-    # Filter out ones we've seen (using md5/id as identifier)
-    # We need to check against the string version of IDs since avoid_md5s may contain both
-    candidates = []
+    candidate_lists = []
+    # Flatten the structure slightly for random picking
+    # We don't filter by ID anymore because we need the MD5 to know if we've seen it
     for item in items:
         if isinstance(item, list):
-            # It's a group of IDs - use first ID as the identifier
-            if item and str(item[0]) not in avoid_md5s:
-                candidates.append(item)
+            candidate_lists.append(item)
         else:
-            # Single ID
-            if str(item) not in avoid_md5s:
-                candidates.append([item])  # Wrap in list for consistent handling
+            candidate_lists.append([item])
     
-    if not candidates:
+    if not candidate_lists:
         return None
+
+    # Try up to 5 times to find a preselected image we haven't seen
+    # We shuffle to randomize the check order
+    random.shuffle(candidate_lists)
     
-    # Pick a random candidate
-    picked_ids = random.choice(candidates)
-    
-    # Fetch all posts by ID
-    urls = []
-    first_md5 = None
-    
-    for post_id in picked_ids:
-        result = await fetch_post_by_id(int(post_id))
-        if result:
+    for picked_ids in candidate_lists[:5]:
+        # Fetch all posts by ID for this candidate group
+        urls = []
+        first_md5 = None
+        
+        # We need to fetch ALL images in the group to get their MD5s
+        # If ANY of them are seen, we should probably skip the whole group to be safe?
+        # Or just check the first one as the representative for the group?
+        # The calling code uses the returned MD5 (single) to track the "pair/action"
+        
+        group_fetched_successfully = True
+        temp_urls = []
+        temp_first_md5 = None
+        
+        for i, post_id in enumerate(picked_ids):
+            result = await fetch_post_by_id(int(post_id))
+            if not result:
+                group_fetched_successfully = False
+                break
+                
             file_url, md5 = result
-            urls.append(file_url)
-            if first_md5 is None:
-                first_md5 = md5
+            temp_urls.append(file_url)
+            if i == 0:
+                temp_first_md5 = md5
+        
+        if not group_fetched_successfully:
+            continue
+            
+        # Now check if we've seen this group (using first image's MD5 as key)
+        if temp_first_md5 and temp_first_md5 in avoid_md5s:
+            log.info(f"[PRESELECTED] Skipping group starting with {picked_ids[0]} (MD5 {temp_first_md5} seen)")
+            continue
+            
+        # Found a valid one!
+        urls = temp_urls
+        md5_id = temp_first_md5 or str(picked_ids[0])
+        
+        log.info(f"[PRESELECTED] Returning {len(urls)} image(s) for category={category}")
+        return (urls, md5_id, "gelbooru")
     
-    if not urls:
-        log.warning(f"[PRESELECTED] All fetches failed for category={category}")
-        return None
-    
-    # Use first md5 as the dedup identifier
-    md5_id = first_md5 or str(picked_ids[0])
-    
-    log.info(f"[PRESELECTED] Returning {len(urls)} image(s) for category={category}")
-    return (urls, md5_id, "preselected")
+    log.info(f"[PRESELECTED] No unseen preselected images found for category={category}")
+    return None
