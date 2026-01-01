@@ -12,7 +12,7 @@ from tags.tag_sets import KISS_BASE, KISS_POSITIVE_SETS, NEGATIVE_TAGS_SFW
 from fetch.pick_safebooru import pick_media_sfw, FetchError, get_error_message, is_video_url
 from db.runtime import STATS_DB
 from text.kiss_lines import KISS_LINES
-from ui.embeds import build_action_embed
+from ui.embeds import build_action_embed, build_multi_image_embeds
 
 log = logging.getLogger("nyunzi")
 
@@ -110,9 +110,9 @@ def setup(bot: discord.Client):
         try:
             # Handle multi-image case (file and fname are lists)
             if isinstance(file, list) and isinstance(fname, list) and file:
-                # Multiple images - attach all, set first image in embed
-                embed.set_image(url=f"attachment://{fname[0]}")
-                msg = await interaction.edit_original_response(content="", embed=embed, attachments=file, view=view)
+                # Multiple images - use multi-embed gallery
+                embeds = build_multi_image_embeds(embed, fname)
+                msg = await interaction.edit_original_response(content="", embeds=embeds, attachments=file, view=view)
             elif file and fname:
                 # Single image case
                 if fname.endswith((".mp4", ".webm")):

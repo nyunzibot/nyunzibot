@@ -141,3 +141,41 @@ def get_action_emoji(action: str) -> str:
     }
     return emojis.get(action, "💫")
 
+
+def build_multi_image_embeds(
+    main_embed: discord.Embed,
+    filenames: list[str],
+) -> list[discord.Embed]:
+    """
+    Build a list of embeds for multi-image gallery display.
+    
+    Discord displays multiple embeds as a gallery when they share the same `url`.
+    The first embed contains the main content, subsequent embeds just have images.
+    
+    Args:
+        main_embed: The primary embed with content
+        filenames: List of attachment filenames
+        
+    Returns:
+        List of embeds to send together
+    """
+    if not filenames:
+        return [main_embed]
+    
+    # Use a consistent URL to link embeds together for gallery display
+    gallery_url = "https://gelbooru.com"
+    
+    # Set the URL on main embed and first image
+    main_embed.url = gallery_url
+    main_embed.set_image(url=f"attachment://{filenames[0]}")
+    
+    embeds = [main_embed]
+    
+    # Create additional embeds for remaining images (same URL = gallery)
+    for fname in filenames[1:]:
+        img_embed = discord.Embed(url=gallery_url)
+        img_embed.set_image(url=f"attachment://{fname}")
+        embeds.append(img_embed)
+    
+    return embeds
+
