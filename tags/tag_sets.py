@@ -104,6 +104,7 @@ TUCK_POSITIVE_SETS = [
 
 # SFW negative tags (quality filters)
 NEGATIVE_TAGS_SFW = (
+    ""
     #"-lowres -bad_anatomy -bad_hands -missing_fingers "
     #"-extra_digits -fewer_digits -cropped -worst_quality "
     #"-low_quality -jpeg_artifacts -signature "
