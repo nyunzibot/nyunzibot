@@ -150,7 +150,7 @@ def setup(bot: discord.Client):
 
         async def on_status(msg: str):
             try:
-                await interaction.edit_original_response(content=msg)
+                await interaction.edit_original_response(content=msg, allowed_mentions=discord.AllowedMentions.none())
             except Exception:
                 pass
 
@@ -195,20 +195,20 @@ def setup(bot: discord.Client):
                 # For mp4/webm, embed.set_image won't display the video; better to send link instead? 
                 # Actually we attach the file.
                 if fname.endswith((".mp4", ".webm")):
-                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
+                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
                 else:
                     embed.set_image(url=f"attachment://{fname}")
-                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
+                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 content = image_url
                 # Check for video compression fallback (no file but successful fetch)
                 if is_video_url(image_url):
                      content = f"Video compression failed, falling back to URL\n{image_url}"
-                msg = await interaction.edit_original_response(content=content, embed=embed, view=view)
+                msg = await interaction.edit_original_response(content=content, embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
         except HTTPException as e:
             if e.code == 40005:  # Payload Too Large
                 log.warning(f"[PLAP] File too large for Discord (40005), sending URL instead. Error: {e}")
-                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{image_url}", embed=embed, attachments=[], view=view)
+                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{image_url}", embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 raise
 

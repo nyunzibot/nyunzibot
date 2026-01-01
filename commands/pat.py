@@ -74,7 +74,7 @@ def setup(bot: discord.Client):
 
         async def on_status(msg: str):
             try:
-                await interaction.edit_original_response(content=msg)
+                await interaction.edit_original_response(content=msg, allowed_mentions=discord.AllowedMentions.none())
             except Exception:
                 pass
 
@@ -111,13 +111,13 @@ def setup(bot: discord.Client):
             # Handle multi-image case (file and fname are lists)
             if isinstance(file, list) and isinstance(fname, list) and file:
                 embeds = build_multi_image_embeds(embed, fname)
-                msg = await interaction.edit_original_response(content="", embeds=embeds, attachments=file, view=view)
+                msg = await interaction.edit_original_response(content="", embeds=embeds, attachments=file, view=view, allowed_mentions=discord.AllowedMentions.none())
             elif file and fname:
                 if fname.endswith((".mp4", ".webm")):
-                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
+                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
                 else:
                     embed.set_image(url=f"attachment://{fname}")
-                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
+                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 if isinstance(image_url, list):
                     content = "\n".join(image_url)
@@ -125,12 +125,12 @@ def setup(bot: discord.Client):
                     content = image_url
                     if is_video_url(image_url):
                         content = f"Video compression failed, falling back to URL\n{image_url}"
-                msg = await interaction.edit_original_response(content=content, embed=embed, view=view)
+                msg = await interaction.edit_original_response(content=content, embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
         except HTTPException as e:
             if e.code == 40005:
                 log.warning(f"[PAT] File too large for Discord (40005), sending URL instead.")
                 url_content = "\n".join(image_url) if isinstance(image_url, list) else image_url
-                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{url_content}", embed=embed, attachments=[], view=view)
+                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{url_content}", embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 raise
 
