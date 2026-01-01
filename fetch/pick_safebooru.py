@@ -54,9 +54,11 @@ def is_video_url(url: str) -> bool:
 async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Callable[[str], Awaitable[None]]] = None, category: Optional[str] = None):
     """
     SFW version of pick_media - uses all booru sites with rating:safe tag.
-    Returns: (image_url, md5, site, file, fname, error) tuple
+    Returns: (image_url_or_urls, md5, site, file_or_files, fname_or_fnames, error) tuple
     
-    On success: (url, md5, site, file, fname, FetchError.NONE)
+    On success: (url/urls, md5, site, file/files, fname/fnames, FetchError.NONE)
+    - For multi-image preselected: url is list[str], files is list, fnames is list
+    - For single image: url is str, file is single, fname is single
     On failure: (None, None, None, None, None, FetchError.<reason>)
     """
     start_time = time.time()
@@ -77,7 +79,35 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             log.warning(f"[PICK_MEDIA_SFW] No image picked on attempt {attempt+1}/{tries}: {fetch_error.value}")
             return (None, None, None, None, None, last_error)
 
-        image_url, md5, site = picked
+        url_or_urls, md5, site = picked
+        
+        # Handle multi-image case (list of URLs from preselected)
+        if isinstance(url_or_urls, list):
+            log.info(f"[PICK_MEDIA_SFW] Processing {len(url_or_urls)} preselected images from {site}")
+            files = []
+            fnames = []
+            all_success = True
+            
+            for img_url in url_or_urls:
+                file, fname, process_error = await process_image(img_url, max_attempts=3, spoiler=False)
+                if file and fname:
+                    files.append(file)
+                    fnames.append(fname)
+                else:
+                    log.warning(f"[PICK_MEDIA_SFW] Failed to process one of the multi-images: {img_url}")
+                    all_success = False
+            
+            if files:
+                # Return whatever we successfully processed (may be partial)
+                log.info(f"[PICK_MEDIA_SFW] Successfully processed {len(files)}/{len(url_or_urls)} images")
+                return (url_or_urls, md5, site, files, fnames, FetchError.NONE)
+            else:
+                # All failed - fall back to URLs
+                log.warning(f"[PICK_MEDIA_SFW] All multi-image processing failed, falling back to URLs")
+                return (url_or_urls, md5, site, None, None, FetchError.NONE)
+        
+        # Single image case (original logic)
+        image_url = url_or_urls
         log.info(f"[PICK_MEDIA_SFW] Attempt {attempt+1}/{tries}: Picked image from {site}")
         
         # First attempt at processing - SFW content is not spoilered
@@ -148,10 +178,14 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
     return (None, None, None, None, None, last_error)
 
 
-async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSeen, category: Optional[str] = None) -> tuple[tuple[str, str | None, str] | None, FetchError]:
+async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSeen, category: Optional[str] = None) -> tuple[tuple[str | list[str], str | None, str] | None, FetchError]:
     """
     SFW version of pick_image - uses all booru sites.
     Tags should include rating:safe for SFW filtering.
+    
+    Returns: (picked, error) where picked is (url_or_urls, md5, site)
+    - For preselected multi-image: url_or_urls is list[str]
+    - For booru/single image: url_or_urls is str
     """
     md5s_in_memory = getattr(interaction_seen, "md5s", None)
     avoid = set(md5s_in_memory) if md5s_in_memory is not None else set(interaction_seen or [])
@@ -173,14 +207,19 @@ async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSee
     if category:
         pre_res = fetch_preselected(category, avoid)
         if pre_res:
-            # Found a pre-selected image!
+            # Found preselected image(s)! pre_res is (urls_list, md5, site)
+            urls_list, md5, site = pre_res
             # Persist "seen" per pair
             if isinstance(actor_id, int) and isinstance(target_id, int):
                 try:
-                    await STATS_DB.add_pair_seen(actor_id, target_id, pre_res[1], site=pre_res[2], max_entries=1000)
+                    await STATS_DB.add_pair_seen(actor_id, target_id, md5, site=site, max_entries=1000)
                 except Exception:
                     pass
-            return (pre_res, FetchError.NONE)
+            # Return list of URLs for multi-image, or single URL for single
+            if len(urls_list) == 1:
+                return ((urls_list[0], md5, site), FetchError.NONE)
+            else:
+                return ((urls_list, md5, site), FetchError.NONE)
 
     for tag_query in tag_list:
         picked = None
@@ -210,3 +249,4 @@ async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSee
     if all_seen_count > 0:
         return (None, FetchError.ALL_SEEN)
     return (None, FetchError.NO_RESULTS)
+

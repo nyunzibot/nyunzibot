@@ -108,21 +108,29 @@ def setup(bot: discord.Client):
         )
 
         try:
-            if file and fname:
+            # Handle multi-image case (file and fname are lists)
+            if isinstance(file, list) and isinstance(fname, list) and file:
+                embed.set_image(url=f"attachment://{fname[0]}")
+                msg = await interaction.edit_original_response(content="", embed=embed, attachments=file, view=view)
+            elif file and fname:
                 if fname.endswith((".mp4", ".webm")):
                     msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
                 else:
                     embed.set_image(url=f"attachment://{fname}")
                     msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view)
             else:
-                content = image_url
-                if is_video_url(image_url):
-                     content = f"Video compression failed, falling back to URL\n{image_url}"
+                if isinstance(image_url, list):
+                    content = "\n".join(image_url)
+                else:
+                    content = image_url
+                    if is_video_url(image_url):
+                        content = f"Video compression failed, falling back to URL\n{image_url}"
                 msg = await interaction.edit_original_response(content=content, embed=embed, view=view)
         except HTTPException as e:
             if e.code == 40005:
                 log.warning(f"[TUCK] File too large for Discord (40005), sending URL instead.")
-                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{image_url}", embed=embed, attachments=[], view=view)
+                url_content = "\n".join(image_url) if isinstance(image_url, list) else image_url
+                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{url_content}", embed=embed, attachments=[], view=view)
             else:
                 raise
 

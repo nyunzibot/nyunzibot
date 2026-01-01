@@ -1,28 +1,41 @@
 import random
 from tags.preselected import PRESELECTED_SFW
 
-def fetch_preselected(category: str, avoid_md5s: set[str]) -> tuple[str, str, str] | None:
+def fetch_preselected(category: str, avoid_md5s: set[str]) -> tuple[list[str], str, str] | None:
     """
-    Tries to pick a random URL from the pre-selected list for the given category.
-    Returns (url, md5, site) if found and not in avoid list.
-    We use the URL itself as the MD5 for deduplication purposes.
+    Tries to pick a random URL (or list of URLs) from the pre-selected list for the given category.
+    Returns (urls, md5, site) if found and not in avoid list.
+    - urls: list of image URLs (single image = list of one)
+    - md5: We use a hash of the URL(s) for deduplication
+    - site: "preselected"
     """
     if not category or category not in PRESELECTED_SFW:
         return None
         
-    urls = PRESELECTED_SFW[category]
-    if not urls:
+    items = PRESELECTED_SFW[category]
+    if not items:
         return None
-        
-    # Filter out ones we've engaged with (using URL as pseudo-md5)
-    # We create a shuffled list to try
-    candidates = [u for u in urls if u not in avoid_md5s]
+    
+    # Filter out ones we've seen (using first URL or the URL itself as pseudo-md5)
+    candidates = []
+    for item in items:
+        if isinstance(item, list):
+            # It's a group of URLs - use first URL as the identifier
+            if item and item[0] not in avoid_md5s:
+                candidates.append(item)
+        else:
+            # Single URL
+            if item not in avoid_md5s:
+                candidates.append([item])  # Wrap in list for consistent return type
     
     if not candidates:
         return None
         
-    picked_url = random.choice(candidates)
+    picked = random.choice(candidates)
     
-    # Return format: (url, md5, site)
-    # 'site' is 'preselected' so we can track stats if needed
-    return (picked_url, picked_url, "preselected")
+    # Use first URL as the md5/identifier for deduplication
+    md5 = picked[0] if picked else ""
+    
+    # Return format: (urls, md5, site)
+    return (picked, md5, "preselected")
+
