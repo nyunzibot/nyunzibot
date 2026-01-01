@@ -1,17 +1,16 @@
 # =========================
-# PRE-SELECTED SFW URLS
+# PRE-SELECTED SFW IMAGES BY GELBOORU ID
 # =========================
 # Format: "category": [item1, item2, ...]
 # Each item can be:
-#   - A single URL string: "https://example.com/image.jpg"
-#   - A list of URLs for image pairs/groups: ["url1", "url2"]
-# These URLs will be prioritized before fetching from Boorus.
+#   - A single Gelbooru post ID: 13192674
+#   - A list of IDs for image pairs/groups: [13192674, 12345678]
+# These will be fetched from Gelbooru API and prioritized before regular booru fetching.
 
 PRESELECTED_SFW = {
     'kiss': [
         # Example pair - uncomment to test:
-        # ["https://img2.gelbooru.com//images/1c/03/1c03efff379ec3544d4ba6182919e484.jpg",
-        #  "https://img2.gelbooru.com//images/92/94/92947126b3ba0b47fac289ff58c10dc3.jpg"],
+        [13192677, 13192674],
     ],
     'hug': [
     ],

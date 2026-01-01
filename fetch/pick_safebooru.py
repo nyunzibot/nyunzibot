@@ -205,7 +205,7 @@ async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSee
 
     # 1. Try Pre-selected first (if category provided)
     if category:
-        pre_res = fetch_preselected(category, avoid)
+        pre_res = await fetch_preselected(category, avoid)
         if pre_res:
             # Found preselected image(s)! pre_res is (urls_list, md5, site)
             urls_list, md5, site = pre_res
