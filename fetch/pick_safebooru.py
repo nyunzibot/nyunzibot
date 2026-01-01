@@ -13,6 +13,7 @@ from db.runtime import STATS_DB
 from images.process import process_image, ProcessError
 from .preselected import fetch_preselected
 import time
+import os
 
 log = logging.getLogger("nyunzi")
 
@@ -88,11 +89,17 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             fnames = []
             all_success = True
             
-            for img_url in url_or_urls:
+            for i, img_url in enumerate(url_or_urls):
                 file, fname, process_error = await process_image(img_url, max_attempts=3, spoiler=False)
                 if file and fname:
+                    # Rename file to be unique prevents Discord gallery bugs
+                    # process_image returns generic "action.jpg" etc
+                    base, ext = os.path.splitext(fname)
+                    unique_name = f"{base}_{i}{ext}"
+                    file.filename = unique_name
+                    
                     files.append(file)
-                    fnames.append(fname)
+                    fnames.append(unique_name)
                 else:
                     log.warning(f"[PICK_MEDIA_SFW] Failed to process one of the multi-images: {img_url}")
                     all_success = False
