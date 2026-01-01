@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 
 from config import USER_AGENT
 from .common import is_supported_file_url, size_ok, get_cached_count, set_cached_count
+from tags.tag_sets import NEGATIVE_TAGS_SFW
 
 log = logging.getLogger("nyunzi")
 
@@ -21,10 +22,31 @@ async def fetch_image_safebooru(tags: str, avoid_md5s: set[str]) -> tuple[str, s
     PID_HARD_CAP = 200_000
 
     # Strip rating:safe from tags - Safebooru is already SFW-only
-    tags = " ".join(t for t in tags.split() if not t.lower().startswith("rating:"))
+    # Also strip out NEGATIVE_TAGS_SFW if they are present in the query
+    # (users often pass them into the command by default via tag_builder, but we want to ignore them here)
+    
+    # 1. Clean up tags
+    tags_list = tags.split()
+    query_tags = []
+    
+    # Pre-process negative tags into a set for easy lookup
+    # NEGATIVE_TAGS_SFW is a string like "-lowres -bad_anatomy ..."
+    neg_set = {t.strip() for t in NEGATIVE_TAGS_SFW.split()}
+    
+    for t in tags_list:
+        t_lower = t.lower()
+        # Skip rating:safe
+        if t_lower.startswith("rating:"):
+            continue
+        # Skip negative tags found in SFW set
+        if t in neg_set:
+            continue
+        query_tags.append(t)
+        
+    tags = " ".join(query_tags)
 
-    # Score tiers (Safebooru scores are low)
-    SCORE_TIERS: list[int | None] = [100, 50, 20, 10, None]
+    # Score tiers - disabled as requested (only None)
+    SCORE_TIERS: list[int | None] = [None]
 
     def with_score_filter(base_tags: str, min_score: int | None) -> str:
         t = base_tags.strip()

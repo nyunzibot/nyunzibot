@@ -11,6 +11,7 @@ from .fetch_image import fetch_image  # Use all sites, not just Safebooru
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from images.process import process_image, ProcessError
+from .preselected import fetch_preselected
 import time
 
 log = logging.getLogger("nyunzi")
@@ -50,7 +51,7 @@ def is_video_url(url: str) -> bool:
     return u.endswith((".mp4", ".webm"))
 
 
-async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Callable[[str], Awaitable[None]]] = None):
+async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Callable[[str], Awaitable[None]]] = None, category: Optional[str] = None):
     """
     SFW version of pick_media - uses all booru sites with rating:safe tag.
     Returns: (image_url, md5, site, file, fname, error) tuple
@@ -70,7 +71,7 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
                  return (image_url, md5, site, None, None, FetchError.NONE)
             break
 
-        picked, fetch_error = await pick_image_sfw(tags, seen)
+        picked, fetch_error = await pick_image_sfw(tags, seen, category=category)
         if not picked:
             last_error = fetch_error
             log.warning(f"[PICK_MEDIA_SFW] No image picked on attempt {attempt+1}/{tries}: {fetch_error.value}")
@@ -147,7 +148,7 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
     return (None, None, None, None, None, last_error)
 
 
-async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSeen) -> tuple[tuple[str, str | None, str] | None, FetchError]:
+async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSeen, category: Optional[str] = None) -> tuple[tuple[str, str | None, str] | None, FetchError]:
     """
     SFW version of pick_image - uses all booru sites.
     Tags should include rating:safe for SFW filtering.
@@ -167,6 +168,19 @@ async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSee
 
     tag_list = [tags] if isinstance(tags, str) else list(tags)
     all_seen_count = 0
+
+    # 1. Try Pre-selected first (if category provided)
+    if category:
+        pre_res = fetch_preselected(category, avoid)
+        if pre_res:
+            # Found a pre-selected image!
+            # Persist "seen" per pair
+            if isinstance(actor_id, int) and isinstance(target_id, int):
+                try:
+                    await STATS_DB.add_pair_seen(actor_id, target_id, pre_res[1], site=pre_res[2], max_entries=1000)
+                except Exception:
+                    pass
+            return (pre_res, FetchError.NONE)
 
     for tag_query in tag_list:
         picked = None

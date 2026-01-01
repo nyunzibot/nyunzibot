@@ -80,7 +80,7 @@ def setup(bot: discord.Client):
 
         tags = build_tag_ladder(PAT_BASE, PAT_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW)
         tags = _apply_extra_to_ladder(tags, extra_tags or "")
-        result = await pick_media_sfw(tags, view.seen, tries=8, status_cb=on_status)
+        result = await pick_media_sfw(tags, view.seen, tries=8, status_cb=on_status, category="pat")
         image_url, md5, site, file, fname, error = result
         
         if not image_url or error != FetchError.NONE:
