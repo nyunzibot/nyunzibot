@@ -9,8 +9,10 @@
 
 PRESELECTED_SFW = {
     'kiss': [
-        # Example pair - uncomment to test:
-        [13192677, 13192674],
+        # Example: {'id': 12345, 'site': 'gelbooru'}
+        # Or list of IDs: {'id': [123, 456], 'site': 'gelbooru'}
+        {'id': [13192677, 13192674], 'site': 'gelbooru'},
+        {'id': 13187839, 'site': 'gelbooru'},
     ],
     'hug': [
     ],
