@@ -92,7 +92,7 @@ class CuddleView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(CUDDLE_BASE, CUDDLE_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
-        picked, fetch_error = await pick_image_sfw(tags, self.seen)
+        picked, fetch_error = await pick_image_sfw(tags, self.seen, category="cuddle")
         if not picked:
             # restore button state
             button.disabled = False
@@ -200,7 +200,7 @@ class CuddleView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(CUDDLE_BASE, CUDDLE_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
-        picked, fetch_error = await pick_image_sfw(tags, self.seen)
+        picked, fetch_error = await pick_image_sfw(tags, self.seen, category="cuddle")
         if not picked:
             button.disabled = False
             button.label = "Cuddle back"

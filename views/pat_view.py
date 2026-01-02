@@ -87,7 +87,7 @@ class PatView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(PAT_BASE, PAT_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
-        picked, fetch_error = await pick_image_sfw(tags, self.seen)
+        picked, fetch_error = await pick_image_sfw(tags, self.seen, category="pat")
         if not picked:
             button.disabled = False
             button.label = f"Refresh ({remaining})"
@@ -192,7 +192,7 @@ class PatView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(PAT_BASE, PAT_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
-        picked, fetch_error = await pick_image_sfw(tags, self.seen)
+        picked, fetch_error = await pick_image_sfw(tags, self.seen, category="pat")
         if not picked:
             button.disabled = False
             button.label = "Pat back"

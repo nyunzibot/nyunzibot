@@ -87,7 +87,7 @@ class PokeView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(POKE_BASE, POKE_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
-        picked, fetch_error = await pick_image_sfw(tags, self.seen)
+        picked, fetch_error = await pick_image_sfw(tags, self.seen, category="poke")
         if not picked:
             button.disabled = False
             button.label = f"Refresh ({remaining})"
@@ -186,7 +186,7 @@ class PokeView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(POKE_BASE, POKE_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
-        picked, fetch_error = await pick_image_sfw(tags, self.seen)
+        picked, fetch_error = await pick_image_sfw(tags, self.seen, category="poke")
         if not picked:
             button.disabled = False
             button.label = "Poke back"
