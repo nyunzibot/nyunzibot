@@ -73,6 +73,10 @@ def check_is_safe(image_path: str, unsafe_threshold: float = UNSAFE_THRESHOLD) -
     
     Uses nsfw-detector which is specifically trained on anime content.
     """
+    from config import ENABLE_NSFW_DETECTOR
+    if not ENABLE_NSFW_DETECTOR:
+        return True
+
     model = get_model()
     if not model:
         # Fail open if model not available
