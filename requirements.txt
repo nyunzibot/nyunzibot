@@ -4,4 +4,5 @@ Pillow
 firebase-admin
 imageio-ffmpeg
 nsfw-detector
-tensorflow
+tensorflow<2.16
+tensorflow-hub
