@@ -96,19 +96,9 @@ def setup(bot: discord.Client):
 
         line = random.choice(KISS_LINES).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**", emote=random.choice(KISS_EMOTES))
 
-        # Check if video to decide layout
-        is_video = False
-        if isinstance(fname, str) and fname.lower().endswith((".mp4", ".webm")):
-            is_video = True
-        
-        # If video, put text in content (outside embed)
-        # If image, put text in embed
-        if is_video:
-            embed_line = ""
-            msg_content = line
-        else:
-            embed_line = line
-            msg_content = ""
+        # Always put text in embed
+        embed_line = line
+        msg_content = ""
 
         embed = build_action_embed(
             action_type="kiss",

@@ -95,19 +95,9 @@ def setup(bot: discord.Client):
 
         line = random.choice(HUG_LINES).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**")
 
-        # Check if video to decide layout
-        is_video = False
-        if isinstance(fname, str) and fname.lower().endswith((".mp4", ".webm")):
-            is_video = True
-        
-        # If video, put text in content (outside embed) with sparkle logic handled here or in embed?
-        # Layout: Text -> Video -> Embed (stats)
-        if is_video:
-            embed_line = ""
-            msg_content = line
-        else:
-            embed_line = line
-            msg_content = ""
+        # Always put text in embed
+        embed_line = line
+        msg_content = ""
 
         embed = build_action_embed(
             action_type="hug",
