@@ -105,6 +105,7 @@ def setup(bot: discord.Client):
             target_total=target_total,
             source=site,
             is_back=False,
+            disable_prefix=True,
         )
 
         try:

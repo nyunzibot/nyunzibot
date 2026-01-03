@@ -62,6 +62,7 @@ def build_action_embed(
     target_total: Optional[int] = None,
     source: str,
     is_back: bool = False,
+    disable_prefix: bool = False,
 ) -> discord.Embed:
     """Build a clean, beautiful embed for action commands."""
     
@@ -82,12 +83,17 @@ def build_action_embed(
         summary = ""
     
     # Build description with sparkle accent
-    sparkle = Accents.random_sparkle()
+    if disable_prefix:
+        term_line = action_line
+    else:
+        sparkle = Accents.random_sparkle()
+        term_line = f"{sparkle} {action_line}" if action_line else ""
     
     if summary:
-        description = f"{sparkle} {action_line}\n\n{summary}\n\n`source: {source}`"
+        sep = "\n\n" if term_line else ""
+        description = f"{term_line}{sep}{summary}\n\n`source: {source}`"
     else:
-        description = f"{sparkle} {action_line}\n\n`source: {source}`"
+        description = f"{term_line}\n\n`source: {source}`" if term_line else f"`source: {source}`"
     
     # Create embed
     embed = discord.Embed(
