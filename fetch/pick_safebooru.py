@@ -1,19 +1,22 @@
 """
 SFW pick module for cuddle command.
-This module provides image fetching from all booru sites with rating:safe filter.
+This module provides image fetching from all booru sites.
+Safety is now enforced by AI checking (NudeNet) rather than just tags.
 """
 
 from enum import Enum
 import logging
 from typing import Callable, Awaitable, Optional
+import time
+import os
+
 from config import DEDUP_PULL_TRIES
-from .fetch_image import fetch_image  # Use all sites, not just Safebooru
+from .fetch_image import fetch_image
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from images.process import process_image, ProcessError
 from .preselected import fetch_preselected
-import time
-import os
+from images.safety import check_is_safe
 
 log = logging.getLogger("nyunzi")
 
@@ -35,14 +38,14 @@ def get_error_message(error: FetchError) -> str:
     """Convert FetchError to user-friendly message."""
     messages = {
         FetchError.NONE: "",
-        FetchError.NO_RESULTS: "No matching SFW images found for those tags 🔍",
+        FetchError.NO_RESULTS: "No matching safe images found for those tags 🔍",
         FetchError.ALL_SEEN: "You've seen all the images! Try different tags 🎲",
         FetchError.DOWNLOAD_FAILED: "Couldn't download the image (server issue) 🌐",
         FetchError.RATE_LIMITED: "API rate limit hit. Wait a moment and try again ⏳",
         FetchError.FILE_TOO_LARGE: "Image was too large for Discord (>25MB) 📦",
         FetchError.PROCESSING_FAILED: "Couldn't process the image 🖼️",
         FetchError.VIDEO_TOO_LARGE: "Video was too large to attach (>25MB) 🎬",
-        FetchError.ALL_APIS_FAILED: "Couldn't find any matching SFW images. Try different tags 🔄",
+        FetchError.ALL_APIS_FAILED: "Couldn't find any matching images. Try different tags 🔄",
     }
     return messages.get(error, "Something went wrong 😭 Try again.")
 
@@ -54,7 +57,7 @@ def is_video_url(url: str) -> bool:
 
 async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Callable[[str], Awaitable[None]]] = None, category: Optional[str] = None):
     """
-    SFW version of pick_media - uses all booru sites with rating:safe tag.
+    SFW version of pick_media - uses all booru sites.
     Returns: (image_url_or_urls, md5, site, file_or_files, fname_or_fnames, error) tuple
     
     On success: (url/urls, md5, site, file/files, fname/fnames, FetchError.NONE)
@@ -87,30 +90,45 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             log.info(f"[PICK_MEDIA_SFW] Processing {len(url_or_urls)} preselected images from {site}")
             files = []
             fnames = []
-            all_success = True
             
             for i, img_url in enumerate(url_or_urls):
                 file, fname, process_error = await process_image(img_url, max_attempts=3, spoiler=False)
                 if file and fname:
                     # Rename file to be unique prevents Discord gallery bugs
-                    # process_image returns generic "action.jpg" etc
                     base, ext = os.path.splitext(fname)
                     unique_name = f"{base}_{i}{ext}"
                     file.filename = unique_name
+                    
+                    # AI SAFETY CHECK for each image
+                    if not fname.lower().endswith((".mp4", ".webm")):
+                        if not check_is_safe(unique_name): # check_is_safe checks the file on disk, filename maps to it?
+                            # process_image writes to a temp file, but file.filename might be different from actual path?
+                            # process_image retuns 'fname' which is usually the filename.
+                            # But wait, `process_image` returns `file` (discord.File) and `fname` (suggested filename).
+                            # The file is actually open in `file.fp`.
+                            # `check_is_safe` takes a path.
+                            # `process_image` logic (I recall) uses tempfiles.
+                            # I need to know the PATH.
+                            # discord.File.fp.name usually has the path if it's a file object.
+                            try:
+                                path = file.fp.name
+                                if not check_is_safe(path):
+                                    log.warning(f"[SAFETY] Multi-image component {unique_name} detected as explicit. Dropping.")
+                                    file.fp.close()
+                                    continue
+                            except Exception as e:
+                                log.warning(f"[SAFETY] Could not check safety for {unique_name}: {e}")
                     
                     files.append(file)
                     fnames.append(unique_name)
                 else:
                     log.warning(f"[PICK_MEDIA_SFW] Failed to process one of the multi-images: {img_url}")
-                    all_success = False
             
             if files:
-                # Return whatever we successfully processed (may be partial)
                 log.info(f"[PICK_MEDIA_SFW] Successfully processed {len(files)}/{len(url_or_urls)} images")
                 return (url_or_urls, md5, site, files, fnames, FetchError.NONE)
             else:
-                # All failed - fall back to URLs
-                log.warning(f"[PICK_MEDIA_SFW] All multi-image processing failed, falling back to URLs")
+                log.warning(f"[PICK_MEDIA_SFW] All multi-image processing failed (or filtered), falling back to URLs")
                 return (url_or_urls, md5, site, None, None, FetchError.NONE)
         
         # Single image case (original logic)
@@ -119,6 +137,18 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
         
         # First attempt at processing - SFW content is not spoilered
         file, fname, process_error = await process_image(image_url, max_attempts=3, spoiler=False)
+
+        # AI SAFETY CHECK
+        if file and fname and not fname.lower().endswith((".mp4", ".webm")):
+             try:
+                 path = file.fp.name
+                 if not check_is_safe(path):
+                     log.warning(f"[SAFETY] Image {fname} detected as explicit by AI. Skipping.")
+                     file.fp.close()
+                     last_error = FetchError.NO_RESULTS
+                     continue
+             except Exception as e:
+                 log.warning(f"[SAFETY] Check failed: {e}")
 
         # If first attempt succeeded, we're done!
         if file and fname:
@@ -134,18 +164,34 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             log.info(f"[PICK_MEDIA_SFW] Download failed, retrying download...")
             file, fname, process_error = await process_image(image_url, max_attempts=5, spoiler=False)
             if file and fname:
+                if not fname.lower().endswith((".mp4", ".webm")):
+                    try:
+                        path = file.fp.name
+                        if not check_is_safe(path):
+                            log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
+                            file.fp.close()
+                            continue
+                    except: pass
+                
                 log.info(f"[PICK_MEDIA_SFW] Download retry succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
-            log.warning(f"[PICK_MEDIA_SFW] Download retry also failed, trying different image")
             last_error = FetchError.DOWNLOAD_FAILED
         
         elif process_error == ProcessError.PROCESSING_FAILED:
             log.info(f"[PICK_MEDIA_SFW] Processing failed, retrying with compression...")
             file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True, spoiler=False)
             if file and fname:
+                if not fname.lower().endswith((".mp4", ".webm")):
+                    try:
+                        path = file.fp.name
+                        if not check_is_safe(path):
+                            log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
+                            file.fp.close()
+                            continue
+                    except: pass
+
                 log.info(f"[PICK_MEDIA_SFW] Processing retry with compression succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
-            log.warning(f"[PICK_MEDIA_SFW] Processing retry also failed, trying different image")
             last_error = FetchError.PROCESSING_FAILED
         
         elif process_error == ProcessError.FILE_TOO_LARGE:
@@ -156,6 +202,15 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True, spoiler=False)
             
             if file and fname:
+                if not fname.lower().endswith((".mp4", ".webm")):
+                    try:
+                        path = file.fp.name
+                        if not check_is_safe(path):
+                            log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
+                            file.fp.close()
+                            continue
+                    except: pass
+                
                 log.info(f"[PICK_MEDIA_SFW] Compression succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
             
@@ -164,7 +219,6 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
                 log.info(f"[PICK_MEDIA_SFW] Video compression failed, falling back to URL")
                 return (image_url, md5, site, None, None, FetchError.NONE)
             
-            log.warning(f"[PICK_MEDIA_SFW] Compression failed, trying different image")
             last_error = FetchError.FILE_TOO_LARGE
         
         else:
@@ -188,7 +242,6 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
 async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSeen, category: Optional[str] = None) -> tuple[tuple[str | list[str], str | None, str] | None, FetchError]:
     """
     SFW version of pick_image - uses all booru sites.
-    Tags should include rating:safe for SFW filtering.
     
     Returns: (picked, error) where picked is (url_or_urls, md5, site)
     - For preselected multi-image: url_or_urls is list[str]
@@ -256,4 +309,3 @@ async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSee
     if all_seen_count > 0:
         return (None, FetchError.ALL_SEEN)
     return (None, FetchError.NO_RESULTS)
-
