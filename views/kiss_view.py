@@ -11,7 +11,7 @@ from fetch.pick_safebooru import pick_image_sfw, FetchError, get_error_message
 from images.process import process_image, ProcessError
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
-from text.kiss_lines import KISS_LINES
+from text.kiss_lines import KISS_LINES, KISS_EMOTES
 from ui.embeds import build_action_embed
 
 log = logging.getLogger("nyunzi")
@@ -124,7 +124,8 @@ class KissView(discord.ui.View):
 
         line = random.choice(KISS_LINES).format(
             actor=f"**{self.original_actor.display_name}**",
-            target=f"**{self.original_target.display_name}**"
+            target=f"**{self.original_target.display_name}**",
+            emote=random.choice(KISS_EMOTES)
         )
         count = await STATS_DB.get_pair_count("kiss", self.original_actor.id, self.original_target.id)
         totals = await STATS_DB.get_user("kiss", self.original_target.id)
@@ -230,7 +231,8 @@ class KissView(discord.ui.View):
 
         line = random.choice(KISS_LINES).format(
             actor=f"**{interaction.user.display_name}**",
-            target=f"**{self.original_actor.display_name}**"
+            target=f"**{self.original_actor.display_name}**",
+            emote=random.choice(KISS_EMOTES)
         )
 
         full_embed = build_action_embed(
