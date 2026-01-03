@@ -29,17 +29,10 @@ async def fetch_image_safebooru(tags: str, avoid_md5s: set[str]) -> tuple[str, s
     tags_list = tags.split()
     query_tags = []
     
-    # Pre-process negative tags into a set for easy lookup
-    # NEGATIVE_TAGS_SFW is a string like "-lowres -bad_anatomy ..."
-    neg_set = {t.strip() for t in NEGATIVE_TAGS_SFW.split()}
-    
     for t in tags_list:
         t_lower = t.lower()
         # Skip rating:safe
         if t_lower.startswith("rating:"):
-            continue
-        # Skip negative tags found in SFW set
-        if t in neg_set:
             continue
         query_tags.append(t)
         

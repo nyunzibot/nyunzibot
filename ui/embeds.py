@@ -76,9 +76,22 @@ def build_action_embed(
     color = colors.get(action_type, EmbedColors.PLAP)
     
     # Build summary line
+    past_tense_map = {
+        "plap": "plapped",
+        "succ": "succed",
+        "bounce": "bounced",
+        "kiss": "kissed",
+        "hug": "hugged",
+        "pat": "patted",
+        "poke": "poked",
+        "cuddle": "cuddled",
+        "tuck": "tucked",
+    }
+    past_action = past_tense_map.get(action_type, f"{action_type}ped")
+    
     time_word = "time" if target_total == 1 else "times"
     if target_total is not None and target_total >= 1:
-        summary = f"**{target.display_name}** has been {action_type}ped a total of {target_total} {time_word}."
+        summary = f"**{target.display_name}** has been {past_action} a total of {target_total} {time_word}."
     else:
         summary = ""
     
