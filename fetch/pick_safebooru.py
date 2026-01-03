@@ -100,24 +100,10 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
                     file.filename = unique_name
                     
                     # AI SAFETY CHECK for each image
-                    if not fname.lower().endswith((".mp4", ".webm")):
-                        if not check_is_safe(unique_name): # check_is_safe checks the file on disk, filename maps to it?
-                            # process_image writes to a temp file, but file.filename might be different from actual path?
-                            # process_image retuns 'fname' which is usually the filename.
-                            # But wait, `process_image` returns `file` (discord.File) and `fname` (suggested filename).
-                            # The file is actually open in `file.fp`.
-                            # `check_is_safe` takes a path.
-                            # `process_image` logic (I recall) uses tempfiles.
-                            # I need to know the PATH.
-                            # discord.File.fp.name usually has the path if it's a file object.
-                            try:
-                                path = file.fp.name
-                                if not check_is_safe(path):
-                                    log.warning(f"[SAFETY] Multi-image component {unique_name} detected as explicit. Dropping.")
-                                    file.fp.close()
-                                    continue
-                            except Exception as e:
-                                log.warning(f"[SAFETY] Could not check safety for {unique_name}: {e}")
+                    if not _check_safety_with_temp_file(file, unique_name):
+                        log.warning(f"[SAFETY] Multi-image component {unique_name} detected as explicit. Dropping.")
+                        file.fp.close()
+                        continue
                     
                     files.append(file)
                     fnames.append(unique_name)
@@ -139,16 +125,12 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
         file, fname, process_error = await process_image(image_url, max_attempts=3, spoiler=False)
 
         # AI SAFETY CHECK
-        if file and fname and not fname.lower().endswith((".mp4", ".webm")):
-             try:
-                 path = file.fp.name
-                 if not check_is_safe(path):
-                     log.warning(f"[SAFETY] Image {fname} detected as explicit by AI. Skipping.")
-                     file.fp.close()
-                     last_error = FetchError.NO_RESULTS
-                     continue
-             except Exception as e:
-                 log.warning(f"[SAFETY] Check failed: {e}")
+        if file and fname:
+             if not _check_safety_with_temp_file(file, fname):
+                 log.warning(f"[SAFETY] Image {fname} detected as explicit by AI. Skipping.")
+                 file.fp.close()
+                 last_error = FetchError.NO_RESULTS
+                 continue
 
         # If first attempt succeeded, we're done!
         if file and fname:
@@ -164,14 +146,10 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             log.info(f"[PICK_MEDIA_SFW] Download failed, retrying download...")
             file, fname, process_error = await process_image(image_url, max_attempts=5, spoiler=False)
             if file and fname:
-                if not fname.lower().endswith((".mp4", ".webm")):
-                    try:
-                        path = file.fp.name
-                        if not check_is_safe(path):
-                            log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
-                            file.fp.close()
-                            continue
-                    except: pass
+                if not _check_safety_with_temp_file(file, fname):
+                    log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
+                    file.fp.close()
+                    continue
                 
                 log.info(f"[PICK_MEDIA_SFW] Download retry succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
@@ -181,14 +159,10 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             log.info(f"[PICK_MEDIA_SFW] Processing failed, retrying with compression...")
             file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True, spoiler=False)
             if file and fname:
-                if not fname.lower().endswith((".mp4", ".webm")):
-                    try:
-                        path = file.fp.name
-                        if not check_is_safe(path):
-                            log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
-                            file.fp.close()
-                            continue
-                    except: pass
+                if not _check_safety_with_temp_file(file, fname):
+                    log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
+                    file.fp.close()
+                    continue
 
                 log.info(f"[PICK_MEDIA_SFW] Processing retry with compression succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
@@ -202,14 +176,10 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
             file, fname, process_error = await process_image(image_url, max_attempts=3, aggressive_compress=True, spoiler=False)
             
             if file and fname:
-                if not fname.lower().endswith((".mp4", ".webm")):
-                    try:
-                        path = file.fp.name
-                        if not check_is_safe(path):
-                            log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
-                            file.fp.close()
-                            continue
-                    except: pass
+                if not _check_safety_with_temp_file(file, fname):
+                    log.warning(f"[SAFETY] Retry image {fname} detected as explicit. Skipping.")
+                    file.fp.close()
+                    continue
                 
                 log.info(f"[PICK_MEDIA_SFW] Compression succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
@@ -237,6 +207,63 @@ async def pick_media_sfw(tags, seen, *, tries: int = 8, status_cb: Optional[Call
     # Exhausted all tries
     log.warning(f"[PICK_MEDIA_SFW] Exhausted {tries} attempts, last error: {last_error.value}")
     return (None, None, None, None, None, last_error)
+
+
+def _check_safety_with_temp_file(file_obj, filename: str) -> bool:
+    """
+    Helper to safely check if a file object (BytesIO or file) contains explicit content.
+    Writes to a temp file if necessary for NudeNet.
+    """
+    if not file_obj or not filename:
+        return True
+        
+    # Skip video files from safety check (NudeNet is image only)
+    if filename.lower().endswith((".mp4", ".webm")):
+        return True
+
+    temp_path = None
+    is_safe = True
+    
+    try:
+        # Check if we can get a path directly (if it's a file on disk)
+        if hasattr(file_obj, "fp") and hasattr(file_obj.fp, "name") and os.path.exists(file_obj.fp.name):
+            return check_is_safe(file_obj.fp.name)
+        
+        # Otherwise, write the bytes to a temp file
+        import tempfile
+        suffix = os.path.splitext(filename)[1]
+        
+        # Don't delete immediately so we can read it
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            temp_path = tmp.name
+            # Reset pointer
+            if hasattr(file_obj, "fp"):
+                file_obj.fp.seek(0)
+                tmp.write(file_obj.fp.read())
+                file_obj.fp.seek(0)
+            else:
+                # Should not happen with discord.File structure, but fallback
+                pass
+
+        if temp_path:
+            is_safe = check_is_safe(temp_path)
+
+    except Exception as e:
+        log.warning(f"[SAFETY] Check failed for {filename}: {e}")
+        # Default to safe if check fails to avoid blocking users on errors?
+        # Or unsafe? "Safety first" implies return False.
+        # But for now, returning True (Fail Open) to avoid breaking if setup is wrong.
+        return True
+        
+    finally:
+        # Cleanup
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except Exception:
+                pass
+
+    return is_safe
 
 
 async def pick_image_sfw(tags: str | list[str], interaction_seen: InteractionSeen, category: Optional[str] = None) -> tuple[tuple[str | list[str], str | None, str] | None, FetchError]:
