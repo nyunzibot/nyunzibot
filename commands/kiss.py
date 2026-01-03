@@ -11,7 +11,7 @@ from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import KISS_BASE, KISS_POSITIVE_SETS, NEGATIVE_TAGS_SFW
 from fetch.pick_safebooru import pick_media_sfw, FetchError, get_error_message, is_video_url
 from db.runtime import STATS_DB
-from text.kiss_lines import KISS_LINES
+from text.kiss_lines import KISS_LINES, KISS_EMOTES
 from ui.embeds import build_action_embed, build_multi_image_embeds
 
 log = logging.getLogger("nyunzi")
@@ -94,7 +94,7 @@ def setup(bot: discord.Client):
         totals = await STATS_DB.get_user("kiss", target.id)
         target_total = int(totals.get("received", 0))
 
-        line = random.choice(KISS_LINES).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**")
+        line = random.choice(KISS_LINES).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**", emote=random.choice(KISS_EMOTES))
 
         embed = build_action_embed(
             action_type="kiss",
