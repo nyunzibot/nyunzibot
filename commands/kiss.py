@@ -96,11 +96,25 @@ def setup(bot: discord.Client):
 
         line = random.choice(KISS_LINES).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**", emote=random.choice(KISS_EMOTES))
 
+        # Check if video to decide layout
+        is_video = False
+        if isinstance(fname, str) and fname.lower().endswith((".mp4", ".webm")):
+            is_video = True
+        
+        # If video, put text in content (outside embed)
+        # If image, put text in embed
+        if is_video:
+            embed_line = ""
+            msg_content = line
+        else:
+            embed_line = line
+            msg_content = ""
+
         embed = build_action_embed(
             action_type="kiss",
             actor=interaction.user,
             target=target,
-            action_line=line,
+            action_line=embed_line,
             pair_count=count,
             target_total=target_total,
             source=site,
@@ -117,12 +131,10 @@ def setup(bot: discord.Client):
             elif file and fname:
                 # Single image case
                 if fname.endswith((".mp4", ".webm")):
-                    # Force video into embed as requested
-                    embed.set_image(url=f"attachment://{fname}")
-                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
+                    msg = await interaction.edit_original_response(content=msg_content, embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
                 else:
                     embed.set_image(url=f"attachment://{fname}")
-                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
+                    msg = await interaction.edit_original_response(content=msg_content, embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 # Fallback to URL(s)
                 if isinstance(image_url, list):

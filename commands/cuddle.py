@@ -110,11 +110,23 @@ def setup(bot: discord.Client):
 
         line = random.choice(CUDDLE_LINES).format(actor=f"**{interaction.user.display_name}**", target=f"**{target.display_name}**")
 
+        # Check if video to decide layout
+        is_video = False
+        if isinstance(fname, str) and fname.lower().endswith((".mp4", ".webm")):
+            is_video = True
+        
+        if is_video:
+            embed_line = ""
+            msg_content = line
+        else:
+            embed_line = line
+            msg_content = ""
+
         embed = build_action_embed(
             action_type="cuddle",
             actor=interaction.user,
             target=target,
-            action_line=line,
+            action_line=embed_line,
             pair_count=count,
             target_total=target_total,
             source=site,
@@ -135,11 +147,10 @@ def setup(bot: discord.Client):
                     pass
 
                 if fname.endswith((".mp4", ".webm")):
-                    embed.set_image(url=f"attachment://{fname}")
-                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
+                    msg = await interaction.edit_original_response(content=msg_content, embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
                 else:
                     embed.set_image(url=f"attachment://{fname}")
-                    msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
+                    msg = await interaction.edit_original_response(content=msg_content, embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 if isinstance(image_url, list):
                     content = "\n".join(image_url)
