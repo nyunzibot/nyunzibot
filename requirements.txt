@@ -3,5 +3,5 @@ aiohttp
 Pillow
 firebase-admin
 imageio-ffmpeg
-nudenet
-onnxruntime
+nsfw-detector
+tensorflow

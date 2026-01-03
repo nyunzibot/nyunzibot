@@ -78,7 +78,7 @@ def setup(bot: discord.Client):
             except Exception:
                 pass
 
-        tags = build_tag_ladder(KISS_BASE, KISS_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW)
+        tags = build_tag_ladder(KISS_BASE, KISS_POSITIVE_SETS)
         tags = _apply_extra_to_ladder(tags, extra_tags or "")
         result = await pick_media_sfw(tags, view.seen, tries=8, status_cb=on_status, category="kiss")
         image_url, md5, site, file, fname, error = result
