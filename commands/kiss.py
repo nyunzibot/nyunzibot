@@ -116,6 +116,8 @@ def setup(bot: discord.Client):
             elif file and fname:
                 # Single image case
                 if fname.endswith((".mp4", ".webm")):
+                    # Force video into embed as requested
+                    embed.set_image(url=f"attachment://{fname}")
                     msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
                 else:
                     embed.set_image(url=f"attachment://{fname}")

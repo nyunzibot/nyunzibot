@@ -113,6 +113,7 @@ def setup(bot: discord.Client):
                 msg = await interaction.edit_original_response(content="", embeds=embeds, attachments=file, view=view, allowed_mentions=discord.AllowedMentions.none())
             elif file and fname:
                 if fname.endswith((".mp4", ".webm")):
+                    embed.set_image(url=f"attachment://{fname}")
                     msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
                 else:
                     embed.set_image(url=f"attachment://{fname}")
