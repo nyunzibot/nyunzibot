@@ -1,5 +1,6 @@
 import random
 import logging
+from urllib.parse import urlencode
 from pixivpy_async import AppPixivAPI
 
 import config
@@ -39,6 +40,14 @@ async def fetch_image_pixiv(tags: str, avoid_md5s: set[str]) -> tuple[str, str |
                 offset = random.randint(0, 100)
                 
                 # Search for illustrations
+                params = {
+                    "word": search_query,
+                    "search_target": "partial_match_for_tags",
+                    "sort": "popular_desc",
+                    "offset": offset
+                }
+                full_url = f"https://app-api.pixiv.net/v1/search/illust?{urlencode(params)}"
+                log.info(f"[PIXIV] CALL search_illust: {full_url}")
                 results = await api.search_illust(
                     word=search_query,
                     search_target="partial_match_for_tags",
