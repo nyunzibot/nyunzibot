@@ -210,7 +210,12 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
     
     for attempt in range(1, max_attempts + 1):
         try:
-            async with aiohttp.ClientSession() as session:
+            # Build headers - Pixiv requires referer for hotlink protection
+            headers = {}
+            if "i.pximg.net" in url or "pixiv" in url.lower():
+                headers["Referer"] = "https://www.pixiv.net/"
+            
+            async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     if resp.status == 429:
                         was_rate_limited = True

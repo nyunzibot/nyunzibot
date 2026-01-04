@@ -6,11 +6,12 @@ from .safebooru import fetch_image_safebooru
 from .konachan import fetch_image_konachan
 from .yandere import fetch_image_yandere
 from .danbooru import fetch_image_danbooru
+from .pixiv import fetch_image_pixiv
 
 import config
 
 # =========================
-# WRAPPER: Gelbooru -> Rule34 -> Safe -> Kona -> Yande -> Dan
+# WRAPPER: Gelbooru -> Rule34 -> Safe -> Kona -> Yande -> Dan -> Pixiv
 # =========================
 async def fetch_image(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None, str] | None:
     if config.ENABLE_GELBOORU:
@@ -42,6 +43,10 @@ async def fetch_image(tags: str, avoid_md5s: set[str]) -> tuple[str, str | None,
         if res: return res
     
     if config.ENABLE_DANBOORU:
-        return await fetch_image_danbooru(tags, avoid_md5s)
+        res = await fetch_image_danbooru(tags, avoid_md5s)
+        if res: return res
+    
+    if config.ENABLE_PIXIV:
+        return await fetch_image_pixiv(tags, avoid_md5s)
     
     return None

@@ -3,6 +3,7 @@ aiohttp
 Pillow
 firebase-admin
 imageio-ffmpeg
-nsfw-detector
-tensorflow<2.16
-tensorflow-hub
+#nsfw-detector
+#tensorflow<2.16
+#tensorflow-hub
+pixivpy-async

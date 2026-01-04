@@ -50,6 +50,9 @@ DANBOORU_API = "https://danbooru.donmai.us"
 DANBOORU_API_KEY = "rghpNgC2KboozqiixztXaXSJ"
 DANBOORU_LOGIN_ID = "nyunzibot"
 
+# Pixiv (requires refresh token - see https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362)
+PIXIV_REFRESH_TOKEN = "lEjKs0waCVZA6DE0bKnL2zPzTL-JN48HaU_ayB9sh6c"
+
 # Persistent DB path (Railway Volume)
 DB_PATH = "/data/stats.sqlite3"
 
@@ -71,12 +74,13 @@ DEDUP_PULL_TRIES = 6
 # =========================
 # SITE TOGGLES (Testing)
 # =========================
-ENABLE_GELBOORU = True
-ENABLE_RULE34 = True
-ENABLE_RULE34US = True
+ENABLE_GELBOORU = False
+ENABLE_RULE34 = False
+ENABLE_RULE34US = False
 ENABLE_RULE34VIDEO = False
-ENABLE_SAFEBOORU = True
-ENABLE_KONACHAN = True
-ENABLE_YANDERE = True
-ENABLE_DANBOORU = True
+ENABLE_SAFEBOORU = False
+ENABLE_KONACHAN = False
+ENABLE_YANDERE = False
+ENABLE_DANBOORU = False
+ENABLE_PIXIV = True
 ENABLE_NSFW_DETECTOR = False
