@@ -4,6 +4,7 @@ import discord
 from logging_setup import setup_logging
 from config import TOKEN, RULE34_API_KEY, RULE34_USER_ID, GELBOORU_API_KEY, GELBOORU_USER_ID, DB_PATH
 from bot.client import create_bot
+from db.runtime import STATS_DB
 
 from commands import plap as plap_cmd
 from commands import succ as succ_cmd
@@ -63,6 +64,21 @@ def main():
             log.info("Unexpected error during sync: %s", e)
         log.info("Logged in as %s", bot.user)
         log.info("Registered commands: %s", [c.name for c in bot.tree.get_commands()])
+
+        log.info("Fetching Firebase users...")
+        try:
+            uids = await STATS_DB.get_all_user_ids()
+            log.info("Found %d users in DB", len(uids))
+            for uid in uids:
+                try:
+                    user = await bot.fetch_user(uid)
+                    log.info("DB User: %s (@%s) [ID: %s]", user.display_name, user.name, uid)
+                except discord.NotFound:
+                    log.warning("DB User %s not found on Discord", uid)
+                except discord.HTTPException as e:
+                    log.warning("Failed to fetch user %s: %s", uid, e)
+        except Exception as e:
+            log.error("Failed to fetch/log DB users: %s", e)
 
     bot.run(TOKEN)
 

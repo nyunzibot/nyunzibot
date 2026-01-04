@@ -212,3 +212,21 @@ class FirestoreStatsDB:
             return out
 
         return await self._run(work)
+
+    async def get_all_user_ids(self) -> list[int]:
+        """Fetch all user IDs from the users collection."""
+        def work():
+            docs = self.db.collection("users").stream()
+            user_ids = []
+            for doc in docs:
+                d = doc.to_dict() or {}
+                # The user_id field is stored as string in record_action/get_user
+                uid = d.get("user_id")
+                if uid:
+                    try:
+                        user_ids.append(int(uid))
+                    except ValueError:
+                        pass
+            return user_ids
+
+        return await self._run(work)
