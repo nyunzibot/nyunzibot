@@ -47,7 +47,9 @@ async def fetch_image_pixiv(tags: str, avoid_md5s: set[str]) -> tuple[str, str |
                     "offset": offset
                 }
                 full_url = f"https://app-api.pixiv.net/v1/search/illust?{urlencode(params)}"
+                web_url = f"https://www.pixiv.net/en/tags/{search_query}/artworks"
                 log.info(f"[PIXIV] CALL search_illust: {full_url}")
+                log.info(f"[PIXIV] WEB LINK: {web_url}")
                 results = await api.search_illust(
                     word=search_query,
                     search_target="partial_match_for_tags",
