@@ -43,7 +43,7 @@ SUCC_BASE = "futa_on_female"
 BOUNCE_BASE = "futa_on_female"
 
 # SFW Tags for cuddle command (AI filtering enabled)
-CUDDLE_BASE = ""  # No rating filter; use AI to block explicit content
+CUDDLE_BASE = "rating:safe"  # No rating filter; use AI to block explicit content
 CUDDLE_POSITIVE_SETS = [
     "hug",
     "cuddling",
@@ -53,7 +53,7 @@ CUDDLE_POSITIVE_SETS = [
 ]
 
 # SFW Tags for kiss command (AI filtering enabled)
-KISS_BASE = ""
+KISS_BASE = "rating:safe"
 KISS_POSITIVE_SETS = [
     "kiss",
     "kissing",
@@ -63,7 +63,7 @@ KISS_POSITIVE_SETS = [
 ]
 
 # SFW Tags for pat command (AI filtering enabled)
-PAT_BASE = ""
+PAT_BASE = "rating:safe"
 PAT_POSITIVE_SETS = [
     "head_pat",
     "headpat",
@@ -73,7 +73,7 @@ PAT_POSITIVE_SETS = [
 ]
 
 # SFW Tags for hug command (AI filtering enabled)
-HUG_BASE = ""
+HUG_BASE = "rating:safe"
 HUG_POSITIVE_SETS = [
     "hug",
     "hugging",
@@ -82,7 +82,7 @@ HUG_POSITIVE_SETS = [
 ]
 
 # SFW Tags for poke command (AI filtering enabled)
-POKE_BASE = ""
+POKE_BASE = "rating:safe"
 POKE_POSITIVE_SETS = [
     "poking",
     "poke",
@@ -91,7 +91,7 @@ POKE_POSITIVE_SETS = [
 ]
 
 # SFW Tags for tuck command (AI filtering enabled)
-TUCK_BASE = ""
+TUCK_BASE = "rating:safe"
 TUCK_POSITIVE_SETS = [
     "sleeping",
     "blanket",
