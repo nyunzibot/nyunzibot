@@ -7,12 +7,11 @@ import asyncio
 from bot.safe_defer import safe_defer
 from tags.tag_builder import build_tag_ladder
 from tags.tag_sets import KISS_BASE, KISS_POSITIVE_SETS, NEGATIVE_TAGS_SFW
-from fetch.pick_safebooru import pick_image_sfw, FetchError, get_error_message
-from images.process import process_image, ProcessError
+from fetch.pick_safebooru import pick_media_sfw, FetchError, get_error_message, is_video_url
 from db.stats import InteractionSeen
 from db.runtime import STATS_DB
 from text.kiss_lines import KISS_LINES, KISS_EMOTES
-from ui.embeds import build_action_embed
+from ui.embeds import build_action_embed, build_multi_image_embeds
 
 log = logging.getLogger("nyunzi")
 
@@ -87,37 +86,20 @@ class KissView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(KISS_BASE, KISS_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
-        picked, fetch_error = await pick_image_sfw(tags, self.seen, category="kiss")
-        if not picked:
+        result = await pick_media_sfw(tags, self.seen, tries=8, category="kiss")
+        image_url, md5, site, file, fname, error = result
+
+        if not image_url or error != FetchError.NONE:
             button.disabled = False
             button.label = f"Refresh ({remaining})"
             try:
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            error_msg = get_error_message(fetch_error)
+            error_msg = get_error_message(error)
             await interaction.followup.send(error_msg, ephemeral=True)
             return
 
-        image_url, md5, site = picked
-        file, fname, process_error = await process_image(image_url, max_attempts=3, spoiler=False)
-        if not file or not fname:
-            button.disabled = False
-            button.label = f"Refresh ({remaining})"
-            try:
-                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
-            except Exception:
-                pass
-            if process_error == ProcessError.RATE_LIMITED:
-                error_msg = get_error_message(FetchError.RATE_LIMITED)
-            elif process_error == ProcessError.FILE_TOO_LARGE:
-                error_msg = get_error_message(FetchError.FILE_TOO_LARGE)
-            else:
-                error_msg = get_error_message(FetchError.PROCESSING_FAILED)
-            await interaction.followup.send(error_msg, ephemeral=True)
-            return
-
-        self.seen.add(md5)
         self.rerolls_left = remaining - 1
         button.disabled = False
         button.label = f"Refresh ({self.rerolls_left})"
@@ -142,30 +124,54 @@ class KissView(discord.ui.View):
             is_back=False,
         )
 
-        if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
-            embed.set_image(url=f"attachment://{fname}")
-
         try:
-            await interaction.followup.edit_message(
-                message_id=interaction.message.id,
-                embed=embed,
-                attachments=[file],
-                view=self
-            )
+            # Handle multi-image case
+            if isinstance(file, list) and isinstance(fname, list) and file:
+                embeds = build_multi_image_embeds(embed, fname)
+                await interaction.followup.edit_message(
+                    message_id=interaction.message.id,
+                    embeds=embeds,
+                    attachments=file,
+                    view=self
+                )
+            elif file and fname:
+                if fname.lower().endswith((".mp4", ".webm")):
+                    await interaction.followup.edit_message(
+                        message_id=interaction.message.id,
+                        embed=embed,
+                        attachments=[file],
+                        view=self
+                    )
+                else:
+                    embed.set_image(url=f"attachment://{fname}")
+                    await interaction.followup.edit_message(
+                        message_id=interaction.message.id,
+                        embed=embed,
+                        attachments=[file],
+                        view=self
+                    )
+            else:
+                 # Fallback URL
+                content = "\n".join(image_url) if isinstance(image_url, list) else image_url
+                if is_video_url(content):
+                     content = f"Video compression failed, falling back to URL\n{content}"
+                
+                await interaction.followup.edit_message(
+                    message_id=interaction.message.id,
+                    content=content,
+                    embed=embed,
+                    view=self
+                )
+
         except HTTPException as e:
             if e.code == 40005:
                 log.warning("[KISS VIEW] File too large for Discord")
                 await interaction.followup.send("📦 File too large to attach. Try refreshing for a different image.", ephemeral=True)
             else:
-                if fname.lower().endswith((".mp4", ".webm")):
-                    await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
-                else:
-                    await interaction.followup.send(embed=embed, file=file, view=self)
+                 raise
         except Exception:
-            if fname.lower().endswith((".mp4", ".webm")):
-                await interaction.followup.send(embed=embed, file=file, view=self, wait=True)
-            else:
-                await interaction.followup.send(embed=embed, file=file, view=self)
+             # If editing fails, maybe try sending as new if safe? But we want to edit.
+             pass
 
     @discord.ui.button(label="Kiss back", emoji="💋", style=discord.ButtonStyle.primary)
     async def kiss_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -193,37 +199,20 @@ class KissView(discord.ui.View):
             pass
 
         tags = self._apply_extra_to_ladder(build_tag_ladder(KISS_BASE, KISS_POSITIVE_SETS, negative_tags=NEGATIVE_TAGS_SFW))
-        picked, fetch_error = await pick_image_sfw(tags, self.seen, category="kiss")
-        if not picked:
+        result = await pick_media_sfw(tags, self.seen, tries=8, category="kiss")
+        image_url, md5, site, file, fname, error = result
+
+        if not image_url or error != FetchError.NONE:
             button.disabled = False
             button.label = "Kiss back"
             try:
                 await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
             except Exception:
                 pass
-            error_msg = get_error_message(fetch_error)
+            error_msg = get_error_message(error)
             await interaction.followup.send(error_msg, ephemeral=True)
             return
 
-        image_url, md5, site = picked
-        file, fname, process_error = await process_image(image_url, max_attempts=3, spoiler=False)
-        if not file or not fname:
-            button.disabled = False
-            button.label = "Kiss back"
-            try:
-                await interaction.followup.edit_message(message_id=interaction.message.id, view=self)
-            except Exception:
-                pass
-            if process_error == ProcessError.RATE_LIMITED:
-                error_msg = get_error_message(FetchError.RATE_LIMITED)
-            elif process_error == ProcessError.FILE_TOO_LARGE:
-                error_msg = get_error_message(FetchError.FILE_TOO_LARGE)
-            else:
-                error_msg = get_error_message(FetchError.PROCESSING_FAILED)
-            await interaction.followup.send(error_msg, ephemeral=True)
-            return
-
-        self.seen.add(md5)
         await STATS_DB.record_action("kiss", interaction.user.id, self.original_actor.id, is_back=True)
         count = await STATS_DB.get_pair_count("kiss", interaction.user.id, self.original_actor.id)
         totals = await STATS_DB.get_user("kiss", self.original_actor.id)
@@ -246,9 +235,6 @@ class KissView(discord.ui.View):
             is_back=True,
         )
 
-        if fname.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
-            full_embed.set_image(url=f"attachment://{fname}")
-
         new_view = KissView(interaction.user, self.original_actor, extra_tags=self.extra_tags)
         new_view.seen = self.seen
 
@@ -257,18 +243,33 @@ class KissView(discord.ui.View):
                 item.label = "Kiss again"
 
         try:
-            msg = await interaction.edit_original_response(embed=full_embed, view=new_view, attachments=[file])
-            new_view.message = msg
+            # Handle multi-image case
+            if isinstance(file, list) and isinstance(fname, list) and file:
+                embeds = build_multi_image_embeds(full_embed, fname)
+                msg = await interaction.edit_original_response(embeds=embeds, attachments=file, view=new_view)
+                new_view.message = msg
+            elif file and fname:
+                if fname.lower().endswith((".mp4", ".webm")):
+                    msg = await interaction.edit_original_response(embed=full_embed, attachments=[file], view=new_view)
+                    new_view.message = msg
+                else:
+                    full_embed.set_image(url=f"attachment://{fname}")
+                    msg = await interaction.edit_original_response(embed=full_embed, attachments=[file], view=new_view)
+                    new_view.message = msg
+            else:
+                 # Fallback URL
+                content = "\n".join(image_url) if isinstance(image_url, list) else image_url
+                if is_video_url(content):
+                     content = f"Video compression failed, falling back to URL\n{content}"
+                
+                msg = await interaction.edit_original_response(content=content, embed=full_embed, view=new_view)
+                new_view.message = msg
+
         except HTTPException as e:
             if e.code == 40005:
                 await interaction.followup.send("📦 File too large. Try again.", ephemeral=True)
             else:
                 raise
         except TypeError:
-            try:
-                msg = await interaction.edit_original_response(embed=full_embed, view=new_view, attachments=[file])
-                new_view.message = msg
-            except Exception:
-                msg = await interaction.followup.send(embed=full_embed, file=file, view=new_view, wait=True)
-                new_view.message = msg
+             pass
 
