@@ -13,6 +13,8 @@ PRESELECTED_SFW = {
         # Or list of IDs: {'id': [123, 456], 'site': 'gelbooru'}
         {'id': [13192677, 13192674], 'site': 'gelbooru'},
         {'id': 13187839, 'site': 'gelbooru'},
+        {'id': 13241578, 'site': 'gelbooru'},
+        {'id': 13245752, 'site': 'gelbooru'},
         {'id': [6281096, 6281095], 'site': 'safebooru'},
         {'id': 6269562, 'site': 'safebooru'},
     ],
