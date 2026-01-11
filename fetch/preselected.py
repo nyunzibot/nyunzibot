@@ -14,8 +14,14 @@ from config import (
     KONACHAN_API,
     YANDERE_API,
     DANBOORU_API,
-    USER_AGENT
+    USER_AGENT,
+    PIXIV_REFRESH_TOKEN
 )
+try:
+    from pixivpy_async import AppPixivAPI
+except ImportError:
+    AppPixivAPI = None
+
 
 log = logging.getLogger("nyunzi")
 
@@ -70,6 +76,51 @@ async def fetch_post_by_id(post_id: int, site: str = "gelbooru") -> tuple[str, s
         # Danbooru: /posts/{id}.json
         url = f"{DANBOORU_API}/posts/{post_id}.json"
         params = {}
+    elif site == "pixiv":
+        if not AppPixivAPI:
+             log.error("[PRESELECTED] pixivpy_async not installed, cannot fetch Pixiv.")
+             return None
+        if not PIXIV_REFRESH_TOKEN:
+             log.warning("[PRESELECTED] No PIXIV_REFRESH_TOKEN, skipping Pixiv.")
+             return None
+             
+        # Pixiv logic is different (uses pixivpy, not simple HTTP dict)
+        try:
+            api = AppPixivAPI()
+            await api.login(refresh_token=PIXIV_REFRESH_TOKEN)
+            
+            json_result = await api.illust_detail(post_id)
+            
+            # Clean up immediately
+            try:
+                await api.client.close()
+            except Exception:
+                pass
+                
+            if json_result and 'illust' in json_result:
+                illust = json_result['illust']
+                
+                # Check if ugoira (animated) - not supported for standard image embeds usually, return zip?
+                # For now, treat everything as image.
+                
+                image_url = None
+                if illust.get('meta_single_page', {}).get('original_image_url'):
+                    image_url = illust['meta_single_page']['original_image_url']
+                elif illust.get('meta_pages'):
+                     image_url = illust['meta_pages'][0]['image_urls']['original']
+                elif illust.get('image_urls', {}).get('large'):
+                    image_url = illust['image_urls']['large']
+                    
+                if image_url:
+                    # Pixiv uses id as hash/md5 effectively
+                    return (image_url, f"pixiv_{post_id}")
+            
+            return None
+            
+        except Exception as e:
+            log.warning(f"[PRESELECTED] Pixiv fetch failed for {post_id}: {e}")
+            return None
+
     else:
         log.warning(f"[PRESELECTED] Unknown site '{site}'")
         return None
