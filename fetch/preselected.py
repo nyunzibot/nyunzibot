@@ -26,10 +26,10 @@ except ImportError:
 log = logging.getLogger("nyunzi")
 
 
-async def fetch_post_by_id(post_id: int, site: str = "gelbooru") -> tuple[str, str] | None:
+async def fetch_post_by_id(post_id: int, site: str = "gelbooru", pages: list[int] | None = None) -> list[tuple[str, str]] | None:
     """
     Fetch a single post by ID from a specific site.
-    Returns (file_url, md5) or None if not found.
+    Returns list of (file_url, md5) or None if not found.
     """
     url = ""
     params: dict[str, Any] = {}
@@ -100,20 +100,34 @@ async def fetch_post_by_id(post_id: int, site: str = "gelbooru") -> tuple[str, s
             if json_result and 'illust' in json_result:
                 illust = json_result['illust']
                 
-                # Check if ugoira (animated) - not supported for standard image embeds usually, return zip?
-                # For now, treat everything as image.
+                results = []
                 
-                image_url = None
-                if illust.get('meta_single_page', {}).get('original_image_url'):
-                    image_url = illust['meta_single_page']['original_image_url']
-                elif illust.get('meta_pages'):
-                     image_url = illust['meta_pages'][0]['image_urls']['original']
-                elif illust.get('image_urls', {}).get('large'):
-                    image_url = illust['image_urls']['large']
-                    
-                if image_url:
-                    # Pixiv uses id as hash/md5 effectively
-                    return (image_url, f"pixiv_{post_id}")
+                # Check if multi-page
+                meta_pages = illust.get('meta_pages') or []
+                is_multi = len(meta_pages) > 0
+                
+                target_pages = pages if pages is not None else [0]
+                
+                if is_multi:
+                    for p_idx in target_pages:
+                        if p_idx < len(meta_pages):
+                            url = meta_pages[p_idx]['image_urls']['original']
+                            pseudo_hash = f"pixiv_{post_id}_p{p_idx}"
+                            results.append((url, pseudo_hash))
+                else:
+                    # Single page
+                    # Only valid if asking for page 0
+                    if 0 in target_pages:
+                        url = None
+                        if illust.get('meta_single_page', {}).get('original_image_url'):
+                            url = illust['meta_single_page']['original_image_url']
+                        elif illust.get('image_urls', {}).get('large'):
+                            url = illust['image_urls']['large']
+                        
+                        if url:
+                            results.append((url, f"pixiv_{post_id}_p0"))
+                            
+                return results if results else None
             
             return None
             
@@ -196,7 +210,7 @@ async def fetch_post_by_id(post_id: int, site: str = "gelbooru") -> tuple[str, s
                     return None
                 
                 log.info(f"[PRESELECTED] Fetched {site} id={post_id} -> {file_url}")
-                return (file_url, md5 or str(post_id))
+                return [(file_url, md5 or str(post_id))]
                 
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
         log.warning(f"[PRESELECTED] Failed to fetch {site} id={post_id}: {e}")
@@ -221,23 +235,34 @@ async def fetch_preselected(category: str, avoid_md5s: set[str]) -> tuple[list[s
     if not items:
         return None
     
-    # Normalize items to list of {'id': [ids], 'site': 'site_name'}
+    
+    # Normalize items to list of {'id': [ids], 'site': 'site_name', 'pages': [pages per id?]}
     candidates = []
     
     for item in items:
+        # Debug item structure (print first one)
+        # print(f"DEBUG item: {item}")
         # Default structure
         target_ids = []
         target_site = "gelbooru"
+        target_pages = None # list of list of pages, or None
         
         if isinstance(item, dict):
-            # New format: {'id': ..., 'site': ...}
+            # Format: {'id': ..., 'site': ..., 'pages': ...}
             raw_id = item.get("id")
             target_site = item.get("site", "gelbooru")
             
+            raw_pages = item.get("pages")
+            
             if isinstance(raw_id, list):
                 target_ids = raw_id
+                if raw_pages and isinstance(raw_pages, list):
+                     target_pages = raw_pages 
             else:
                 target_ids = [raw_id]
+                if raw_pages:
+                    target_pages = [raw_pages] # Wrap in list to match target_ids[0]
+                    
         elif isinstance(item, list):
              # Legacy list of IDs -> Gelbooru
              target_ids = item
@@ -246,7 +271,15 @@ async def fetch_preselected(category: str, avoid_md5s: set[str]) -> tuple[list[s
              target_ids = [item]
              
         if target_ids:
-            candidates.append({'ids': target_ids, 'site': target_site})
+            # Check for None items (bug fix for int(None) error seen in logs)
+            target_ids = [tid for tid in target_ids if tid is not None]
+            
+            if target_ids:
+                candidates.append({
+                    'ids': target_ids, 
+                    'site': target_site,
+                    'pages': target_pages
+                })
     
     if not candidates:
         return None
@@ -257,22 +290,29 @@ async def fetch_preselected(category: str, avoid_md5s: set[str]) -> tuple[list[s
     for cand in candidates[:5]:
         picked_ids = cand['ids']
         site = cand['site']
+        pages_list = cand.get('pages') # list of page-lists corresponding to picked_ids, or None
         
         group_fetched_successfully = True
         temp_urls = []
         temp_first_md5 = None
         
         for i, post_id in enumerate(picked_ids):
-            result = await fetch_post_by_id(int(post_id), site=site)
+            # Determine pages for this specific post_id
+            current_pages = None
+            if pages_list and i < len(pages_list):
+                current_pages = pages_list[i]
+            
+            result = await fetch_post_by_id(int(post_id), site=site, pages=current_pages)
             # If any fetch in a group fails, we abandon the group
             if not result:
                 group_fetched_successfully = False
                 break
                 
-            file_url, md5 = result
-            temp_urls.append(file_url)
-            if i == 0:
-                temp_first_md5 = md5
+            # result is list of (url, md5)
+            for r_url, r_md5 in result:
+                temp_urls.append(r_url)
+                if temp_first_md5 is None:
+                    temp_first_md5 = r_md5
         
         if not group_fetched_successfully:
             continue
