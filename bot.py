@@ -1,5 +1,6 @@
 import logging
 import discord
+from keep_alive import start_server
 
 from logging_setup import setup_logging
 from config import TOKEN, RULE34_API_KEY, RULE34_USER_ID, GELBOORU_API_KEY, GELBOORU_USER_ID, DB_PATH
@@ -47,6 +48,7 @@ def main():
 
     @bot.event
     async def on_ready():
+        await start_server()
         try:
             await bot.tree.sync()  # global sync for DMs
         except discord.errors.HTTPException as e:
