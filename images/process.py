@@ -208,45 +208,76 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
     last_error = ProcessError.DOWNLOAD_FAILED
     was_rate_limited = False
     
-    for attempt in range(1, max_attempts + 1):
-        try:
-            # Build headers - Pixiv requires referer for hotlink protection
-            headers = {}
-            if "i.pximg.net" in url or "pixiv" in url.lower():
-                headers["Referer"] = "https://www.pixiv.net/"
+    # Handle local file:// protocol
+    if url.startswith("file://"):
+        local_path = url[7:]
+        # On Windows, file:///c:/... might come as /c:/... or similar, 
+        # but fetcher sends absolute path so usually just removing prefix works if formatted right.
+        # But for robustness:
+        if os.name == 'nt' and local_path.startswith('/') and ':' in local_path:
+             local_path = local_path.lstrip('/')
+             
+        if os.path.exists(local_path):
+            try:
+                with open(local_path, "rb") as f:
+                    raw = f.read()
+                # Clean up temp file immediately? 
+                # The caller expects us to return a discord.File which wraps BytesIO usually.
+                # If we read it here, we have the bytes.
+                # Should we delete the file? 
+                # The fetcher created a temp file. Ideally we delete it after reading.
+                try:
+                    os.unlink(local_path)
+                except Exception:
+                    pass
+            except Exception as e:
+                log.warning(f"[PROCESS] Failed to read local file {local_path}: {e}")
+                return (None, None, ProcessError.DOWNLOAD_FAILED)
+        else:
+            log.warning(f"[PROCESS] Local file not found: {local_path}")
+            return (None, None, ProcessError.DOWNLOAD_FAILED)
+
+    else:
+        # Normal HTTP download
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Build headers - Pixiv requires referer for hotlink protection
+                headers = {}
+                if "i.pximg.net" in url or "pixiv" in url.lower():
+                    headers["Referer"] = "https://www.pixiv.net/"
+                
+                async with aiohttp.ClientSession(headers=headers) as session:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                        if resp.status == 429:
+                            was_rate_limited = True
+                            last_error = ProcessError.RATE_LIMITED
+                            log.warning(f"[PROCESS] Rate limited (429) on attempt {attempt}/{max_attempts}: {url[:80]}")
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+                        if resp.status != 200:
+                            log.warning(f"[PROCESS] HTTP {resp.status} on attempt {attempt}/{max_attempts}: {url[:80]}")
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+
+                        raw = await resp.read()
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                log.warning(f"[PROCESS] Download error on attempt {attempt}/{max_attempts}: {type(e).__name__}")
+                await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                continue
             
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    if resp.status == 429:
-                        was_rate_limited = True
-                        last_error = ProcessError.RATE_LIMITED
-                        log.warning(f"[PROCESS] Rate limited (429) on attempt {attempt}/{max_attempts}: {url[:80]}")
-                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                        continue
-                    if resp.status != 200:
-                        log.warning(f"[PROCESS] HTTP {resp.status} on attempt {attempt}/{max_attempts}: {url[:80]}")
-                        await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-                        continue
-
-                    raw = await resp.read()
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            log.warning(f"[PROCESS] Download error on attempt {attempt}/{max_attempts}: {type(e).__name__}")
-            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
-            continue
-
+            if raw is None:
+                continue
+            if len(raw) > MAX_DOWNLOAD_BYTES:
+                log.warning(f"[PROCESS] File too large to download: {len(raw)} bytes > {MAX_DOWNLOAD_BYTES}")
+                return (None, None, ProcessError.FILE_TOO_LARGE)
+            break
+        
         if raw is None:
-            continue
-        if len(raw) > MAX_DOWNLOAD_BYTES:
-            log.warning(f"[PROCESS] File too large to download: {len(raw)} bytes > {MAX_DOWNLOAD_BYTES}")
-            return (None, None, ProcessError.FILE_TOO_LARGE)
-        break
-
-    if raw is None:
-        if was_rate_limited:
-            log.warning(f"[PROCESS] Rate limited, exhausted retries: {url[:80]}")
-            return (None, None, ProcessError.RATE_LIMITED)
-        log.warning(f"[PROCESS] Download failed after {max_attempts} attempts: {url[:80]}")
-        return (None, None, ProcessError.DOWNLOAD_FAILED)
+            if was_rate_limited:
+                log.warning(f"[PROCESS] Rate limited, exhausted retries: {url[:80]}")
+                return (None, None, ProcessError.RATE_LIMITED)
+            log.warning(f"[PROCESS] Download failed after {max_attempts} attempts: {url[:80]}")
+            return (None, None, ProcessError.DOWNLOAD_FAILED)
 
     # ---- GIF: attach as-is (keeps animation) ----
     if ext == ".gif":

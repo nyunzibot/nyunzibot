@@ -91,15 +91,27 @@ async def fetch_post_by_id(post_id: int, site: str = "gelbooru", pages: list[int
             
             json_result = await api.illust_detail(post_id)
             
-            # Clean up immediately
-            try:
-                await api.client.close()
-            except Exception:
-                pass
-                
             if json_result and 'illust' in json_result:
                 illust = json_result['illust']
                 
+                # Check for Ugoira
+                if illust.get('type') == 'ugoira':
+                    from .pixiv_ugoira import convert_ugoira_to_gif
+                    gif_path = await convert_ugoira_to_gif(api, post_id)
+                    
+                    # Clean up API immediately (converter uses its own session for zip dl usually, 
+                    # but needs api for metadata. conversion is done now)
+                    try:
+                        await api.client.close()
+                    except Exception:
+                        pass
+                        
+                    if gif_path:
+                         # Return as file:// URL
+                         # Use post_id as hash
+                         return [(f"file://{gif_path}", f"pixiv_{post_id}_ugo")]
+                    return None
+
                 results = []
                 
                 # Check if multi-page
@@ -126,10 +138,14 @@ async def fetch_post_by_id(post_id: int, site: str = "gelbooru", pages: list[int
                         
                         if url:
                             results.append((url, f"pixiv_{post_id}_p0"))
-                            
-                return results if results else None
             
-            return None
+            # Clean up if not handled above
+            try:
+                await api.client.close()
+            except Exception:
+                pass
+                            
+            return results if 'results' in locals() and results else None
             
         except Exception as e:
             log.warning(f"[PRESELECTED] Pixiv fetch failed for {post_id}: {e}")
