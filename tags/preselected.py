@@ -99,6 +99,7 @@ PRESELECTED_SFW = {
     'cuddle': [
         {'id': 13302146, 'site': 'gelbooru'},
         {'id': 13287762, 'site': 'gelbooru'},
+        {'id': 13068847, 'site': 'gelbooru'},
         {'id': 119199250, 'site': 'pixiv', 'pages': [0]},
     ],
     'tuck': [
