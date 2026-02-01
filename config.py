@@ -9,17 +9,19 @@
 # DB_PATH (optional)
 # =========================
 
+import os
+
 # NOTE: Keeping the same literal values as your original single-file bot,
 # so behavior is unchanged when you run this refactor.
-TOKEN = "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg"
+TOKEN = os.getenv("TOKEN", "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg")
 
 # APIs
 USER_AGENT = "nyunzi-bot/1.0"
 
 # Rule34 (XML)
 RULE34_API = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
-RULE34_API_KEY = "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c21827b2222c2c3c59352c7a1b847b0d1e869838aee87a59a2d2bddb6811bbbdcae8"
-RULE34_USER_ID = "5699450"
+RULE34_API_KEY = os.getenv("RULE34_API_KEY", "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c21827b2222c2c3c59352c7a1b847b0d1e869838aee87a59a2d2bddb6811bbbdcae8")
+RULE34_USER_ID = os.getenv("RULE34_USER_ID", "5699450")
 
 # Rule34.us (Scraping)
 RULE34US_URL = "https://rule34.us"
@@ -29,8 +31,8 @@ RULE34VIDEO_URL = "https://rule34video.com"
 
 # Gelbooru (JSON for fetch, XML for count-probe)
 GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index" # &json=1 for fetch
-GELBOORU_API_KEY = "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e"
-GELBOORU_USER_ID = "1873378"
+GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e")
+GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "1873378")
 
 # Safebooru (XML for count, JSON for fetch)
 SAFEBOORU_API = "https://safebooru.org/index.php?page=dapi&s=post&q=index"

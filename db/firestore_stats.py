@@ -11,19 +11,27 @@ class FirestoreStatsDB:
         self.db = self._init_firestore()
 
     def _init_firestore(self):
+        # 1. Try explicit service account JSON (local dev or non-Google env)
         raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
-
-        if not raw:
+        if raw:
+            cred = credentials.Certificate(json.loads(raw))
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app(cred)
+            return firestore.client()
+        
+        # 2. Try Application Default Credentials (ADC) - for Cloud Run / GCE
+        # This works if the environment is set up (e.g. gcloud auth application-default login)
+        # or running on Google Cloud infrastructure.
+        try:
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app()  # No args = use ADC
+            return firestore.client()
+        except Exception as e:
             firebase_keys = [k for k in os.environ.keys() if k.startswith("FIREBASE_")]
             raise RuntimeError(
-                "Missing env var FIREBASE_SERVICE_ACCOUNT_JSON in this running service/environment. "
-                f"FIREBASE_* vars present: {firebase_keys}"
+                f"Failed to initialize Firestore. Env var FIREBASE_SERVICE_ACCOUNT_JSON missing, "
+                f"and ADC failed ({e}). FIREBASE_* vars present: {firebase_keys}"
             )
-
-        cred = credentials.Certificate(json.loads(raw))
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(cred)
-        return firestore.client()
 
     async def _run(self, fn, *args):
         return await asyncio.to_thread(fn, *args)

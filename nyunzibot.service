@@ -1,0 +1,28 @@
+[Unit]
+Description=NyunziBot Discord Bot
+After=network.target
+
+[Service]
+# Replace [YOUR_USERNAME] with your actual Linux username (e.g. rohan)
+User=[YOUR_USERNAME]
+WorkingDirectory=/home/[YOUR_USERNAME]/nyunzibot
+
+# Assuming you create a virtual environment named 'venv'
+ExecStart=/home/[YOUR_USERNAME]/nyunzibot/venv/bin/python bot.py
+
+# Restart the bot automatically if it crashes
+Restart=always
+RestartSec=10
+
+# Environment variables (Add your keys here)
+# You can also use an EnvironmentFile if you prefer
+Environment=TOKEN=YOUR_DISCORD_TOKEN_HERE
+Environment=RULE34_API_KEY=YOUR_KEY
+Environment=RULE34_USER_ID=YOUR_ID
+Environment=GELBOORU_API_KEY=YOUR_KEY
+Environment=GELBOORU_USER_ID=YOUR_ID
+# Application Default Credentials will handle Firestore auth automatically
+# providing this VM has the correct scopes/service account attached.
+
+[Install]
+WantedBy=multi-user.target
