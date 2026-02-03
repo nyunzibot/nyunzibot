@@ -39,8 +39,8 @@ SAFEBOORU_API = "https://safebooru.org/index.php?page=dapi&s=post&q=index"
 
 # Konachan (Moebooru)
 KONACHAN_API = "https://konachan.com/post"
-KONACHAN_API_KEY = "jtVwWKhWbBLcCBV-iaNAxw"
-KONACHAN_LOGIN_ID = "nyunzibot"
+KONACHAN_API_KEY = os.getenv("KONACHAN_API_KEY", "jtVwWKhWbBLcCBV-iaNAxw")
+KONACHAN_LOGIN_ID = os.getenv("KONACHAN_LOGIN_ID", "nyunzibot")
 
 # Yande.re (Moebooru)
 YANDERE_API = "https://yande.re/post"
@@ -49,11 +49,11 @@ YANDERE_API_KEY = ""
 
 # Danbooru
 DANBOORU_API = "https://danbooru.donmai.us"
-DANBOORU_API_KEY = "rghpNgC2KboozqiixztXaXSJ"
-DANBOORU_LOGIN_ID = "nyunzibot"
+DANBOORU_API_KEY = os.getenv("DANBOORU_API_KEY", "rghpNgC2KboozqiixztXaXSJ")
+DANBOORU_LOGIN_ID = os.getenv("DANBOORU_LOGIN_ID", "nyunzibot")
 
 # Pixiv (requires refresh token - see https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362)
-PIXIV_REFRESH_TOKEN = "lEjKs0waCVZA6DE0bKnL2zPzTL-JN48HaU_ayB9sh6c"
+PIXIV_REFRESH_TOKEN = os.getenv("PIXIV_REFRESH_TOKEN", "lEjKs0waCVZA6DE0bKnL2zPzTL-JN48HaU_ayB9sh6c")
 
 # Persistent DB path (Railway Volume)
 DB_PATH = "/data/stats.sqlite3"
