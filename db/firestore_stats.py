@@ -75,7 +75,10 @@ class FirestoreStatsDB:
             md5s = d.get("md5s") or []
             return list(md5s)
 
-        return await self._run(work)
+        try:
+            return await self._run(work)
+        except Exception:
+            return []
 
     async def add_pair_seen(self, user_a: int, user_b: int, md5: str, site: str | None = None, max_entries: int = 1000):
         """Atomically add md5 to the pair's rolling list (max_entries, drop oldest)."""
@@ -111,7 +114,10 @@ class FirestoreStatsDB:
             txn = self.db.transaction()
             txn_update(txn)
 
-        await self._run(work)
+        try:
+            await self._run(work)
+        except Exception:
+            pass
 
     async def record_action(self, action: str, actor_id: int, target_id: int, is_back: bool):
         """
@@ -148,7 +154,13 @@ class FirestoreStatsDB:
             batch.set(pair_ref, pair_updates, merge=True)
             batch.commit()
 
-        await self._run(work)
+        try:
+            await self._run(work)
+        except Exception as e:
+            # Log specific warning for feedback but don't crash
+            import logging
+            log = logging.getLogger("nyunzi")
+            log.warning("DB Error during record_action (stats not saved): %s", e)
 
     async def get_user(self, action: str, user_id: int) -> dict:
         """
@@ -169,8 +181,10 @@ class FirestoreStatsDB:
                 "received": int(d.get(self._field(action, "received"), 0)),
             }
 
-        return await self._run(work)
-
+        try:
+            return await self._run(work)
+        except Exception:
+            return {"given": 0, "received": 0}
 
     async def get_pair_count(self, action: str, actor_id: int, target_id: int) -> int:
         """Return directed pair count for actor -> target for the given action."""
@@ -187,7 +201,10 @@ class FirestoreStatsDB:
             d = snap.to_dict() or {}
             return int(d.get(self._pair_field(action), 0))
 
-        return await self._run(work)
+        try:
+            return await self._run(work)
+        except Exception:
+            return 0
 
     async def mark_seen(self, md5: str, site: str):
         def work():
@@ -203,7 +220,7 @@ class FirestoreStatsDB:
         try:
             await self._run(work)
         except Exception:
-            # already exists → ignore
+            # already exists or DB failure → ignore
             return
 
     async def load_recent_seen(self, max_age_days: int = 30) -> set[str]:
@@ -219,7 +236,10 @@ class FirestoreStatsDB:
                     out.add(md5)
             return out
 
-        return await self._run(work)
+        try:
+            return await self._run(work)
+        except Exception:
+            return set()
 
     async def get_all_user_ids(self) -> list[int]:
         """Fetch all user IDs from the users collection."""
@@ -237,4 +257,7 @@ class FirestoreStatsDB:
                         pass
             return user_ids
 
-        return await self._run(work)
+        try:
+            return await self._run(work)
+        except Exception:
+            return []
