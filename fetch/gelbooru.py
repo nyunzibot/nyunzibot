@@ -4,7 +4,7 @@ import aiohttp
 import logging
 
 from config import GELBOORU_API, GELBOORU_API_KEY, GELBOORU_USER_ID, USER_AGENT, SCORE_TIERS, LIMIT_TIERS, PAGES_PER_LIMIT
-from .common import should_lower_limit, is_supported_file_url, size_ok, pid_max_for, get_cached_count, set_cached_count
+from .common import should_lower_limit, is_supported_file_url, size_ok, pid_max_for, get_cached_count, set_cached_count, is_tier_failed, set_tier_failed
 
 log = logging.getLogger("nyunzi")
 
@@ -417,6 +417,11 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
             tier_tags = with_score_filter(tags, tier)
             tier_label = f">={tier}" if tier is not None else "none"
 
+            # Skip tiers known to be blocked (cached 403s etc.)
+            if is_tier_failed("gelbooru", tier_label):
+                log.debug("[GEL FETCH] tier=%s skipped (cached failure)", tier_label)
+                continue
+
             # ---- Step 1: probe count for this tier ----
             count = get_cached_count("gelbooru", tier_tags, tier_label)
             tier_pid_cap = PID_HARD_CAP
@@ -447,6 +452,13 @@ async def fetch_image_gelbooru(tags: str, avoid_md5s: set[str]) -> tuple[str, st
                             if resp.status == 429:
                                 await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
                                 continue
+                            
+                            # 403 = Forbidden: don't retry, cache the failure, skip tier
+                            if resp.status == 403:
+                                log.info("[GEL PROBE] tier=%s status=403 (Forbidden, skipping tier for 5min)", tier_label)
+                                set_tier_failed("gelbooru", tier_label, 403)
+                                break
+                            
                             if resp.status != 200:
                                 log.info("[GEL PROBE] tier=%s status=%s (Retrying)", tier_label, resp.status)
                                 continue

@@ -33,6 +33,47 @@ def _ext_from_url(url: str) -> str:
     return ""
 
 
+async def _validate_video_ffmpeg(raw: bytes) -> bool:
+    """Use FFmpeg to check if the video file is valid and not truncated."""
+    try:
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        # Write bytes to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
+            f.write(raw)
+            temp_path = f.name
+            
+        try:
+            # -v error: suppress normal info, show errors
+            # -i input: file
+            # -f null -: don't save output
+            cmd = [ffmpeg_exe, "-v", "error", "-i", temp_path, "-f", "null", "-"]
+            
+            # Using asyncio to run subprocess so we don't block the event loop
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            
+            # Any error output from ffmpeg indicates a corrupt/truncated stream
+            if proc.returncode != 0 or len(stderr.strip()) > 0:
+                log.warning(f"[VALIDATE] Video validation failed. FFmpeg output: {stderr.decode('utf-8', errors='ignore')[:200]}")
+                return False
+                
+            return True
+        finally:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+    except Exception as e:
+        log.warning(f"[VALIDATE] FFmpeg validation exception: {e}")
+        return False
+
+
 async def compress_image(raw: bytes, target_size: int = MAX_DISCORD_BYTES, spoiler: bool = True) -> discord.File | None:
     """
     Aggressively compress an image to fit within target_size.
@@ -288,8 +329,12 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
         buf.seek(0)
         return (discord.File(buf, filename="action.gif", spoiler=spoiler), "action.gif", ProcessError.NONE)
 
-    # ---- Video: attached if small, compress if large ----
+    # ---- Video: validate via ffmpeg, attach if small, compress if large ----
     if ext in (".mp4", ".webm"):
+        if not await _validate_video_ffmpeg(raw):
+            log.warning(f"[PROCESS] Video FFmpeg validation failed for {url[:80]}")
+            return (None, None, ProcessError.PROCESSING_FAILED)
+            
         if len(raw) <= MAX_DISCORD_BYTES:
             buf = io.BytesIO(raw)
             buf.seek(0)

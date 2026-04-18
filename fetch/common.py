@@ -70,3 +70,29 @@ def get_cached_count(site: str, tags: str, tier: str) -> int | None:
 def set_cached_count(site: str, tags: str, tier: str, count: int):
     key = (site, tags, tier)
     _PROBE_CACHE[key] = (count, time.time())
+
+# =========================
+# FAILURE CACHE
+# Caches tiers that returned 403/blocked so we skip them instantly
+# on subsequent calls instead of hammering the API.
+# TTL: 5 minutes (these are usually persistent blocks, not transient).
+# =========================
+_FAILURE_CACHE = {}
+_FAILURE_TTL = 300  # 5 minutes
+
+def is_tier_failed(site: str, tier: str) -> bool:
+    """Check if a (site, tier) combo is known to be blocked/failed."""
+    key = (site, tier)
+    entry = _FAILURE_CACHE.get(key)
+    if not entry:
+        return False
+    status, ts = entry
+    if time.time() - ts > _FAILURE_TTL:
+        del _FAILURE_CACHE[key]
+        return False
+    return True
+
+def set_tier_failed(site: str, tier: str, status: int):
+    """Mark a (site, tier) combo as failed with the HTTP status."""
+    key = (site, tier)
+    _FAILURE_CACHE[key] = (status, time.time())
