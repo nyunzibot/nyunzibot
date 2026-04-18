@@ -301,6 +301,15 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
                             continue
 
                         raw = await resp.read()
+                        
+                        # Gelbooru CDN can return 200 OK with an HTML block page if rate-limited.
+                        # This prevents PIL from trying to open an HTML document as an image.
+                        if raw and raw.lstrip()[:15].lower().startswith((b'<!doctype', b'<html', b'<?xml', b'<html>')):
+                            log.warning(f"[PROCESS] Received HTML instead of media (IP blocked) on attempt {attempt}/{max_attempts}: {url[:80]}")
+                            raw = None
+                            await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
+                            continue
+
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 log.warning(f"[PROCESS] Download error on attempt {attempt}/{max_attempts}: {type(e).__name__}")
                 await asyncio.sleep(backoffs[min(attempt, len(backoffs) - 1)])
