@@ -12,7 +12,8 @@ class FirestoreStatsDB:
 
     def _init_firestore(self):
         # 1. Try explicit service account JSON (local dev or non-Google env)
-        raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+        # Fallback to checking with \n because of a Railway dashboard copy/paste bug
+        raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON") or os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON\n")
         if raw:
             cred = credentials.Certificate(json.loads(raw))
             if not firebase_admin._apps:
