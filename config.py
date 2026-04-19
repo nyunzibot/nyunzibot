@@ -31,8 +31,10 @@ RULE34VIDEO_URL = "https://rule34video.com"
 
 # Gelbooru (JSON for fetch, XML for count-probe)
 GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index" # &json=1 for fetch
-GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e")
-GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "1873378")
+# GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e")
+# GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "1873378")
+GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "45af4c0dae15b5257e58bccf901a6181a0e78c0d48b49c9cbd9094c1aed89280345e92e22ea5e0da9cc31b6be92c3a4a187ee95c45d7b4e02d206ca17a6f2fa5")
+GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "1956401")
 
 # Safebooru (XML for count, JSON for fetch)
 SAFEBOORU_API = "https://safebooru.org/index.php?page=dapi&s=post&q=index"
