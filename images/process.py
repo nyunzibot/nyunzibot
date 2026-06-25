@@ -282,10 +282,16 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
         # Normal HTTP download
         for attempt in range(1, max_attempts + 1):
             try:
-                # Build headers - Pixiv requires referer for hotlink protection
-                headers = {}
+                # Build headers - Pixiv requires referer for hotlink protection, Gelbooru blocks bots without UA
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
                 if "i.pximg.net" in url or "pixiv" in url.lower():
                     headers["Referer"] = "https://www.pixiv.net/"
+                elif "gelbooru.com" in url.lower():
+                    headers["Referer"] = "https://gelbooru.com/"
                 
                 # Check for local WARP SOCKS5 proxy (port 40000)
                 connector = None
