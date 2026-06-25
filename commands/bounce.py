@@ -192,6 +192,7 @@ def setup(bot: discord.Client):
                 else:
                      content = ""
                      embed.set_image(url=image_url)
+                     embed.description = str(embed.description or "") + f"\n\n[Direct Media Link]({image_url})"
                 msg = await interaction.edit_original_response(content=content, embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
         except HTTPException as e:
             if e.code == 40005:  # Payload Too Large
@@ -201,6 +202,7 @@ def setup(bot: discord.Client):
                     content += f"\n{image_url}"
                 else:
                     embed.set_image(url=image_url)
+                    embed.description = str(embed.description or "") + f"\n\n[Direct Media Link]({image_url})"
                 msg = await interaction.edit_original_response(content=content, embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 raise

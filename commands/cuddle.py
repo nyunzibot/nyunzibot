@@ -147,12 +147,14 @@ def setup(bot: discord.Client):
                 if isinstance(image_url, list):
                     content = ""
                     embed.set_image(url=image_url[0])
+                    embed.description = str(embed.description or "") + f"\n\n[Direct Media Link]({image_url[0]})"
                 else:
                     if is_video_url(image_url):
                         content = f"Video compression failed, falling back to URL\n{image_url}"
                     else:
                         content = ""
                         embed.set_image(url=image_url)
+                        embed.description = str(embed.description or "") + f"\n\n[Direct Media Link]({image_url})"
                 msg = await interaction.edit_original_response(content=content, embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
         except HTTPException as e:
             if e.code == 40005:  # Payload Too Large
