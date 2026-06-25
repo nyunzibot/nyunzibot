@@ -287,7 +287,16 @@ async def process_image(url: str, max_attempts: int = 3, aggressive_compress: bo
                 if "i.pximg.net" in url or "pixiv" in url.lower():
                     headers["Referer"] = "https://www.pixiv.net/"
                 
-                async with aiohttp.ClientSession(headers=headers) as session:
+                # Check for local WARP SOCKS5 proxy (port 40000)
+                connector = None
+                if os.environ.get("WARP_PROXY") == "1":
+                    try:
+                        from aiohttp_socks import ProxyConnector
+                        connector = ProxyConnector.from_url('socks5://127.0.0.1:40000')
+                    except ImportError:
+                        log.warning("[PROCESS] WARP_PROXY is set but aiohttp_socks is not installed")
+
+                async with aiohttp.ClientSession(headers=headers, connector=connector) as session:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                         if resp.status == 429:
                             was_rate_limited = True
