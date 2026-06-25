@@ -138,7 +138,12 @@ def setup(bot: discord.Client):
             if e.code == 40005:
                 log.warning(f"[KISS] File too large for Discord (40005), sending URL instead.")
                 url_content = "\n".join(image_url) if isinstance(image_url, list) else image_url
-                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{url_content}", embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
+                content = "📦 File too large to attach"
+                if is_video_url(url_content):
+                    content += f"\n{url_content}"
+                else:
+                    embed.set_image(url=url_content)
+                msg = await interaction.edit_original_response(content=content, embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 raise
 

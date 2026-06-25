@@ -123,17 +123,25 @@ def setup(bot: discord.Client):
                     msg = await interaction.edit_original_response(content=msg_content, embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 if isinstance(image_url, list):
-                    content = "\n".join(image_url)
+                    content = ""
+                    embed.set_image(url=image_url[0])
                 else:
-                    content = image_url
                     if is_video_url(image_url):
                         content = f"Video compression failed, falling back to URL\n{image_url}"
+                    else:
+                        content = ""
+                        embed.set_image(url=image_url)
                 msg = await interaction.edit_original_response(content=content, embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
         except HTTPException as e:
             if e.code == 40005:
                 log.warning(f"[HUG] File too large for Discord (40005), sending URL instead.")
                 url_content = "\n".join(image_url) if isinstance(image_url, list) else image_url
-                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{url_content}", embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
+                content = "📦 File too large to attach"
+                if is_video_url(url_content):
+                    content += f"\n{url_content}"
+                else:
+                    embed.set_image(url=url_content)
+                msg = await interaction.edit_original_response(content=content, embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 raise
 

@@ -200,15 +200,21 @@ def setup(bot: discord.Client):
                     embed.set_image(url=f"attachment://{fname}")
                     msg = await interaction.edit_original_response(content="", embed=embed, attachments=[file], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
-                content = image_url
-                # Check for video compression fallback (no file but successful fetch)
                 if is_video_url(image_url):
                      content = f"Video compression failed, falling back to URL\n{image_url}"
+                else:
+                     content = ""
+                     embed.set_image(url=image_url)
                 msg = await interaction.edit_original_response(content=content, embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
         except HTTPException as e:
             if e.code == 40005:  # Payload Too Large
                 log.warning(f"[PLAP] File too large for Discord (40005), sending URL instead. Error: {e}")
-                msg = await interaction.edit_original_response(content=f"📦 File too large to attach\n{image_url}", embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
+                content = "📦 File too large to attach"
+                if is_video_url(image_url):
+                    content += f"\n{image_url}"
+                else:
+                    embed.set_image(url=image_url)
+                msg = await interaction.edit_original_response(content=content, embed=embed, attachments=[], view=view, allowed_mentions=discord.AllowedMentions.none())
             else:
                 raise
 
