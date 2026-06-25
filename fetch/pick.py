@@ -99,8 +99,8 @@ async def pick_media(tags, seen, *, tries: int = 8, status_cb: Optional[Callable
             if file and fname:
                 log.info(f"[PICK_MEDIA] Download retry succeeded!")
                 return (image_url, md5, site, file, fname, FetchError.NONE)
-            log.warning(f"[PICK_MEDIA] Download retry also failed, trying different image")
-            last_error = FetchError.DOWNLOAD_FAILED
+            log.warning(f"[PICK_MEDIA] Download retry also failed, falling back to URL")
+            return (image_url, md5, site, None, None, FetchError.NONE)
         
         # PROCESSING_FAILED: Try processing again once more
         elif process_error == ProcessError.PROCESSING_FAILED:
