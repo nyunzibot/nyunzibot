@@ -8,6 +8,11 @@ async def health_check(request):
     return web.Response(text="OK")
 
 async def start_server():
+    # No inbound HTTP on GitHub Actions — skip the health-check server
+    if os.environ.get("GITHUB_ACTIONS"):
+        log.info("Running on GitHub Actions — skipping health-check server")
+        return
+
     app = web.Application()
     app.router.add_get('/', health_check)
     runner = web.AppRunner(app)

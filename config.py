@@ -13,15 +13,15 @@ import os
 
 # NOTE: Keeping the same literal values as your original single-file bot,
 # so behavior is unchanged when you run this refactor.
-TOKEN = os.getenv("TOKEN", "MTQ0OTg0MDM2Mzg3MDM1OTc2Mw.GJ_Y_k.Grssi02jlFr4J1T1Wrd1JI73xO17qTlEZLZUcg")
+TOKEN = os.getenv("TOKEN", "")
 
 # APIs
 USER_AGENT = "nyunzi-bot/1.0"
 
 # Rule34 (XML)
 RULE34_API = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index"
-RULE34_API_KEY = os.getenv("RULE34_API_KEY", "a8a50348e0754ddbee7de5e869427460b1e424c0109130d53d169bf0cb99c21827b2222c2c3c59352c7a1b847b0d1e869838aee87a59a2d2bddb6811bbbdcae8")
-RULE34_USER_ID = os.getenv("RULE34_USER_ID", "5699450")
+RULE34_API_KEY = os.getenv("RULE34_API_KEY", "")
+RULE34_USER_ID = os.getenv("RULE34_USER_ID", "")
 
 # Rule34.us (Scraping)
 RULE34US_URL = "https://rule34.us"
@@ -33,16 +33,16 @@ RULE34VIDEO_URL = "https://rule34video.com"
 GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index" # &json=1 for fetch
 # GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "04176dbed5e2dcb5f047e9b684af9fac71df32281b10c92efff66da5dc97bd4710f78a81d87dd29d2670b97c6b1768f153902124648253b62fff50b85ea1049e")
 # GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "1873378")
-GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "45af4c0dae15b5257e58bccf901a6181a0e78c0d48b49c9cbd9094c1aed89280345e92e22ea5e0da9cc31b6be92c3a4a187ee95c45d7b4e02d206ca17a6f2fa5")
-GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "1956401")
+GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "")
+GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "")
 
 # Safebooru (XML for count, JSON for fetch)
 SAFEBOORU_API = "https://safebooru.org/index.php?page=dapi&s=post&q=index"
 
 # Konachan (Moebooru)
 KONACHAN_API = "https://konachan.com/post"
-KONACHAN_API_KEY = os.getenv("KONACHAN_API_KEY", "jtVwWKhWbBLcCBV-iaNAxw")
-KONACHAN_LOGIN_ID = os.getenv("KONACHAN_LOGIN_ID", "nyunzibot")
+KONACHAN_API_KEY = os.getenv("KONACHAN_API_KEY", "")
+KONACHAN_LOGIN_ID = os.getenv("KONACHAN_LOGIN_ID", "")
 
 # Yande.re (Moebooru)
 YANDERE_API = "https://yande.re/post"
@@ -51,11 +51,11 @@ YANDERE_API_KEY = ""
 
 # Danbooru
 DANBOORU_API = "https://danbooru.donmai.us"
-DANBOORU_API_KEY = os.getenv("DANBOORU_API_KEY", "rghpNgC2KboozqiixztXaXSJ")
-DANBOORU_LOGIN_ID = os.getenv("DANBOORU_LOGIN_ID", "nyunzibot")
+DANBOORU_API_KEY = os.getenv("DANBOORU_API_KEY", "")
+DANBOORU_LOGIN_ID = os.getenv("DANBOORU_LOGIN_ID", "")
 
 # Pixiv (requires refresh token - see https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362)
-PIXIV_REFRESH_TOKEN = os.getenv("PIXIV_REFRESH_TOKEN", "lEjKs0waCVZA6DE0bKnL2zPzTL-JN48HaU_ayB9sh6c")
+PIXIV_REFRESH_TOKEN = os.getenv("PIXIV_REFRESH_TOKEN", "")
 
 # Persistent DB path (Railway Volume)
 DB_PATH = "/data/stats.sqlite3"

@@ -1,0 +1,44 @@
+name: Run NyunziBot
+
+on:
+  schedule:
+    # Fire every minute — concurrency ensures only one instance runs at a time
+    - cron: '* * * * *'
+  workflow_dispatch:  # Allow manual trigger from Actions tab
+
+concurrency:
+  group: bot-runner
+  cancel-in-progress: false  # Don't kill the running bot; just skip the new trigger
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # ~5h 50m — safely under the 6-hour GitHub Actions limit
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run bot
+        env:
+          TOKEN: ${{ secrets.TOKEN }}
+          RULE34_API_KEY: ${{ secrets.RULE34_API_KEY }}
+          RULE34_USER_ID: ${{ secrets.RULE34_USER_ID }}
+          GELBOORU_API_KEY: ${{ secrets.GELBOORU_API_KEY }}
+          GELBOORU_USER_ID: ${{ secrets.GELBOORU_USER_ID }}
+          KONACHAN_API_KEY: ${{ secrets.KONACHAN_API_KEY }}
+          KONACHAN_LOGIN_ID: ${{ secrets.KONACHAN_LOGIN_ID }}
+          DANBOORU_API_KEY: ${{ secrets.DANBOORU_API_KEY }}
+          DANBOORU_LOGIN_ID: ${{ secrets.DANBOORU_LOGIN_ID }}
+          PIXIV_REFRESH_TOKEN: ${{ secrets.PIXIV_REFRESH_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: python bot.py
