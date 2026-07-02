@@ -1,4 +1,5 @@
 import random
+import urllib.parse
 import discord
 from discord import HTTPException
 import logging
@@ -19,13 +20,21 @@ log = logging.getLogger("nyunzi")
 
 class PokeView(discord.ui.View):
     def __init__(self, original_actor: discord.User, original_target: discord.User, extra_tags: str = ""):
-        super().__init__(timeout=3600)
+        super().__init__(timeout=None)
         self.original_actor = original_actor
         self.original_target = original_target
         self.extra_tags = " ".join((extra_tags or "").split()).strip()
         self.message: discord.Message | None = None
         self.seen = InteractionSeen(original_actor.id, original_target.id)
         self.rerolls_left = 3
+
+        safe_tags = urllib.parse.quote(self.extra_tags.replace(':', '_'))[:40] if hasattr(self, 'extra_tags') and self.extra_tags else "0"
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                if child.label and "Refresh" in child.label:
+                    child.custom_id = f"act:poke:reroll:{self.original_actor.id}:{self.original_target.id}:{safe_tags}"
+                elif child.label and "back" in child.label.lower():
+                    child.custom_id = f"act:poke:back:{self.original_actor.id}:{self.original_target.id}:{safe_tags}"
 
     def _apply_extra_to_ladder(self, ladder: list[str]) -> list[str]:
         if not self.extra_tags:

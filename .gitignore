@@ -26,3 +26,5 @@ Thumbs.db
 .coverage
 coverage.xml
 result.xml
+
+secrets.env

@@ -34,6 +34,9 @@ def main():
 
     bot = create_bot()
 
+    from views.persistent import setup_persistent_views
+    setup_persistent_views(bot)
+
     # Register commands
     plap_cmd.setup(bot)
     succ_cmd.setup(bot)
