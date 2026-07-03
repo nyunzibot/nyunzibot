@@ -11,8 +11,6 @@
 
 import os
 
-# NOTE: Keeping the same literal values as your original single-file bot,
-# so behavior is unchanged when you run this refactor.
 TOKEN = os.getenv("TOKEN", "")
 
 # APIs
@@ -31,8 +29,6 @@ RULE34VIDEO_URL = "https://rule34video.com"
 
 # Gelbooru (JSON for fetch, XML for count-probe)
 GELBOORU_API = "https://gelbooru.com/index.php?page=dapi&s=post&q=index" # &json=1 for fetch
-# GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "")
-# GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "")
 GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "")
 GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "")
 
