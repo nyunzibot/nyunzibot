@@ -68,18 +68,6 @@ def main():
         try:
             uids = await STATS_DB.get_all_user_ids()
             log.info("Found %d users in DB", len(uids))
-            
-            found_users = []
-            for uid in uids:
-                try:
-                    user = await bot.fetch_user(uid)
-                    found_users.append(f"{user.display_name} (@{user.name})")
-                except discord.NotFound:
-                    log.warning("DB User %s not found on Discord", uid)
-                except discord.HTTPException as e:
-                    log.warning("Failed to fetch user %s: %s", uid, e)
-            
-            log.info("DB Users: %s", found_users)
         except Exception as e:
             log.error("Failed to fetch/log DB users: %s", e)
 
