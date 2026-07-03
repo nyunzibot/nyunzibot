@@ -5,6 +5,13 @@ from fetch.safebooru import fetch_image_safebooru
 from fetch.gelbooru import fetch_image_gelbooru
 from fetch.rule34 import fetch_image_rule34
 
+@pytest.fixture(autouse=True)
+def mock_config(monkeypatch):
+    monkeypatch.setattr("fetch.gelbooru.GELBOORU_API_KEY", "dummy")
+    monkeypatch.setattr("fetch.gelbooru.GELBOORU_USER_ID", "dummy")
+    monkeypatch.setattr("fetch.rule34.RULE34_API_KEY", "dummy")
+    monkeypatch.setattr("fetch.rule34.RULE34_USER_ID", "dummy")
+
 @pytest.fixture
 def mock_aiohttp():
     with patch("aiohttp.ClientSession") as m:

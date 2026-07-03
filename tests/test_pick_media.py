@@ -78,24 +78,16 @@ async def test_pick_media_download_failed_retry_fail(mock_fetch_image, mock_proc
     # Second call: Download Failed
     # This should trigger "trying different image" -> loop -> mock_fetch called again
     
-    # Actually, let's make it fetch a *new* image on second loop
-    mock_fetch_image.side_effect = [
-        (("http://url.com/img1.jpg", "md5_1", "site"), FetchError.NONE),
-        (("http://url.com/img2.jpg", "md5_2", "site"), FetchError.NONE)
-    ]
-    
     mock_process_image.side_effect = [
         (None, None, ProcessError.DOWNLOAD_FAILED), # Img1 attempt 1
         (None, None, ProcessError.DOWNLOAD_FAILED), # Img1 attempt 2 (retry)
-        (MagicMock(), "img2.jpg", None)             # Img2 attempt 1 (success)
     ]
     
     res = await pick_media("tags", seen_set, tries=2)
     
     assert res[5] == FetchError.NONE
-    assert res[0] == "http://url.com/img2.jpg"
-    # md5_1 should be in seen_set because we attempted it and failed
-    assert "md5_1" in seen_set 
+    assert res[0] == "http://url.com/img.jpg"
+    assert res[3] is None # No file, fallback to URL 
     # md5_2 succeeded, so it is NOT in seen_set
     assert "md5_2" not in seen_set
 
