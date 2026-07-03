@@ -73,15 +73,17 @@ async def test_process_video_compress_success(mock_aiohttp_stream, mock_file_ops
             MagicMock(st_size=10*1024*1024)
         ]
         with patch("images.process.compress_video", new_callable=AsyncMock) as m_compress:
-            m_compress.return_value = discord.File(io.BytesIO(b"video"), filename="vid.mp4")
-            
-            url = "http://example.com/video.mp4"
-            session = mock_aiohttp_stream.return_value.__aenter__.return_value
-            response = session.get.return_value.__aenter__.return_value
-            # > MAX_DISCORD but <= MAX_DOWNLOAD
-            response.read.return_value = b"0" * (26 * 1024 * 1024)
-            
-            file, fname, error = await process_image(url, aggressive_compress=True)
-            
-            assert error == ProcessError.NONE
-            assert m_compress.called
+            with patch("images.process._validate_video_ffmpeg", new_callable=AsyncMock) as m_valid:
+                m_valid.return_value = True
+                m_compress.return_value = discord.File(io.BytesIO(b"video"), filename="vid.mp4")
+
+                url = "http://example.com/video.mp4"
+                session = mock_aiohttp_stream.return_value.__aenter__.return_value
+                response = session.get.return_value.__aenter__.return_value
+                # > MAX_DISCORD but <= MAX_DOWNLOAD
+                response.read.return_value = b"0" * (26 * 1024 * 1024)
+
+                file, fname, error = await process_image(url, aggressive_compress=True)
+
+                assert error == ProcessError.NONE
+                assert m_compress.called

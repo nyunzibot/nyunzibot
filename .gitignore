@@ -10,8 +10,10 @@ env/
 
 # Secrets / credentials
 .env
+*.env
 key.json
 serviceAccountKey.json
+nyunzibot.service
 
 # IDE
 .vscode/

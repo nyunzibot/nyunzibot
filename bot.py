@@ -3,7 +3,7 @@ import discord
 from keep_alive import start_server
 
 from logging_setup import setup_logging
-from config import TOKEN, RULE34_API_KEY, RULE34_USER_ID, GELBOORU_API_KEY, GELBOORU_USER_ID, DB_PATH
+from config import TOKEN, DB_PATH
 from bot.client import create_bot
 from db.runtime import STATS_DB
 
@@ -22,15 +22,9 @@ def main():
     log = setup_logging()
 
     log.info("DB_PATH=%s", DB_PATH)
-    log.info("Rule34 enabled=%s", bool(RULE34_API_KEY and RULE34_USER_ID))
-    log.info("Gelbooru enabled=%s", bool(GELBOORU_API_KEY and GELBOORU_USER_ID))
 
     if not TOKEN:
-        log.warning("TOKEN missing! Bot cannot log in (set Railway variable TOKEN).")
-    if not (RULE34_API_KEY and RULE34_USER_ID):
-        log.warning("RULE34_API_KEY or RULE34_USER_ID missing! Rule34 fetching will be skipped.")
-    if not (GELBOORU_API_KEY and GELBOORU_USER_ID):
-        log.warning("GELBOORU_API_KEY or GELBOORU_USER_ID missing! Gelbooru fetching will be skipped.")
+        log.warning("TOKEN missing — bot cannot log in.")
 
     bot = create_bot()
 
@@ -79,7 +73,7 @@ def main():
             for uid in uids:
                 try:
                     user = await bot.fetch_user(uid)
-                    found_users.append(f"{user.display_name} (@{user.name}) [ID: {uid}]")
+                    found_users.append(f"{user.display_name} (@{user.name})")
                 except discord.NotFound:
                     log.warning("DB User %s not found on Discord", uid)
                 except discord.HTTPException as e:
