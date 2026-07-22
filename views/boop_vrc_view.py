@@ -123,7 +123,7 @@ class BoopVrcView(discord.ui.View):
         file = discord.File(fp=io.BytesIO(self.processed_bytes), filename=file_name)
         embed.set_image(url=f"attachment://{file_name}")
         
-        return {"embed": embed, "file": file, "view": self, "attachments": []}
+        return {"embed": embed, "file": file, "view": self}
 
     async def fps_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -132,7 +132,7 @@ class BoopVrcView(discord.ui.View):
         
         self._update_buttons()
         kwargs = await self.get_preview_kwargs()
-        await interaction.edit_original_response(**kwargs)
+        await interaction.edit_original_response(**kwargs, attachments=[])
 
     async def toggle_crop_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -140,7 +140,7 @@ class BoopVrcView(discord.ui.View):
         
         self._update_buttons()
         kwargs = await self.get_preview_kwargs()
-        await interaction.edit_original_response(**kwargs)
+        await interaction.edit_original_response(**kwargs, attachments=[])
 
     async def send_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
