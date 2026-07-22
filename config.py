@@ -53,6 +53,11 @@ DANBOORU_LOGIN_ID = os.getenv("DANBOORU_LOGIN_ID", "")
 # Pixiv (requires refresh token - see https://gist.github.com/ZipFile/c9ebedb224406f4f11845ab700124362)
 PIXIV_REFRESH_TOKEN = os.getenv("PIXIV_REFRESH_TOKEN", "")
 
+# VRChat API
+VRC_USERNAME = os.getenv("VRC_USERNAME", "")
+VRC_PASSWORD = os.getenv("VRC_PASSWORD", "")
+VRC_TOTP_SECRET = os.getenv("VRC_TOTP_SECRET", "")
+
 # Persistent DB path (Railway Volume)
 DB_PATH = "/data/stats.sqlite3"
 

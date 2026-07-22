@@ -52,4 +52,7 @@ jobs:
           DANBOORU_LOGIN_ID: ${{ secrets.DANBOORU_LOGIN_ID }}
           PIXIV_REFRESH_TOKEN: ${{ secrets.PIXIV_REFRESH_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          VRC_USERNAME: ${{ secrets.VRC_USERNAME }}
+          VRC_PASSWORD: ${{ secrets.VRC_PASSWORD }}
+          VRC_TOTP_SECRET: ${{ secrets.VRC_TOTP_SECRET }}
         run: python -u bot.py
