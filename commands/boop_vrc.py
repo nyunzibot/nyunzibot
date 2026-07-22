@@ -93,9 +93,9 @@ def setup(bot: discord.Client):
 
         frames = 0
         frames_over_time = 0
-        filename = f"emote.{'gif' if emote_url.endswith('.gif') else 'png'}"
+        filename = f"emote.{'gif' if emote_url.endswith('.gif') else ('webp' if emote_url.endswith('.webp') else 'png')}"
         
-        if emote_url.endswith('.gif'):
+        if is_animated:
             try:
                 from bot.sprite_generator import generate_vrc_sprite_sheet
                 import asyncio

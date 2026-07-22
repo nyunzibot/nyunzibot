@@ -172,29 +172,38 @@ class VRChatClient:
                         else:
                             raise
                     
-                    # Optional: extract emoji ID if response provides it
-                    # emoji_id = response[0].get('id')
+                    emoji_id = None
+                    if self.api_client.last_response and self.api_client.last_response.data:
+                        import json
+                        try:
+                            resp_json = json.loads(self.api_client.last_response.data)
+                            emoji_id = resp_json.get('id')
+                            log.info(f"Extracted emoji ID: {emoji_id}")
+                        except Exception as e:
+                            log.warning(f"Failed to parse emoji ID: {e}")
                 finally:
                     os.remove(tmp_path)
                 
                 # 2. Boop the user
                 log.info(f"Sending boop to {target_user_id}...")
                 
-                if hasattr(self.users_api, 'users_user_id_boop_post'):
-                    self.users_api.users_user_id_boop_post(target_user_id)
-                else:
-                    try:
-                        self.api_client.call_api(
-                            '/users/{userId}/boop', 'POST',
-                            path_params={'userId': target_user_id},
-                            auth_settings=['authCookie'],
-                            response_types_map={200: None}
-                        )
-                    except vrchatapi.rest.ApiException as e:
-                        if e.status == 429 and "already booped" in str(e.body).lower():
-                            log.info("User was already booped recently, treating as success.")
-                        else:
-                            raise
+                try:
+                    body = {}
+                    if emoji_id:
+                        body['emojiId'] = emoji_id
+                    
+                    self.api_client.call_api(
+                        '/users/{userId}/boop', 'POST',
+                        path_params={'userId': target_user_id},
+                        auth_settings=['authCookie'],
+                        body=body,
+                        response_types_map={200: None}
+                    )
+                except vrchatapi.rest.ApiException as e:
+                    if e.status == 429 and "already booped" in str(e.body).lower():
+                        log.info("User was already booped recently, treating as success.")
+                    else:
+                        raise
                 
                 return True, "Emoji uploaded and boop sent successfully!"
             except Exception as e:
