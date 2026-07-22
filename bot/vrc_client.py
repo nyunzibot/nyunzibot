@@ -145,8 +145,7 @@ class VRChatClient:
                         '/file/image', 'POST',
                         auth_settings=['authCookie'],
                         post_params=post_params,
-                        files={'file': tmp_path},
-                        response_type=object
+                        files={'file': tmp_path}
                     )
                     
                     # Optional: extract emoji ID if response provides it
