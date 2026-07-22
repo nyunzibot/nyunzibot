@@ -141,13 +141,31 @@ class VRChatClient:
                         post_params.append(('frames', str(frames)))
                         post_params.append(('framesOverTime', str(frames_over_time)))
                         
-                    response = self.api_client.call_api(
-                        '/file/image', 'POST',
-                        header_params={'Content-Type': 'multipart/form-data'},
-                        auth_settings=['authCookie'],
-                        post_params=post_params,
-                        files={'file': tmp_path}
-                    )
+                    try:
+                        import vrchatapi
+                        response = self.api_client.call_api(
+                            '/file/image', 'POST',
+                            header_params={'Content-Type': 'multipart/form-data'},
+                            auth_settings=['authCookie'],
+                            post_params=post_params,
+                            files={'file': tmp_path}
+                        )
+                    except vrchatapi.rest.ApiException as e:
+                        if e.status == 400 and "18 saved emoji" in str(e.body):
+                            log.info("Hit 18 emoji limit, attempting to clean up old emojis...")
+                            if self._cleanup_old_emojis():
+                                # Retry
+                                response = self.api_client.call_api(
+                                    '/file/image', 'POST',
+                                    header_params={'Content-Type': 'multipart/form-data'},
+                                    auth_settings=['authCookie'],
+                                    post_params=post_params,
+                                    files={'file': tmp_path}
+                                )
+                            else:
+                                raise
+                        else:
+                            raise
                     
                     # Optional: extract emoji ID if response provides it
                     # emoji_id = response[0].get('id')
@@ -168,10 +186,30 @@ class VRChatClient:
                 
                 return True, "Emoji uploaded and boop sent successfully!"
             except Exception as e:
-                log.error(f"Failed to process VRC upload/boop: {e}")
+                log.error(f"Failed to upload emoji and boop: {e}")
+                import traceback
+                traceback.print_exc()
                 return False, f"VRChat API error: {e}"
 
         return await asyncio.to_thread(_sync_task)
+
+    def _cleanup_old_emojis(self):
+        try:
+            # We need to list files with tag 'emoji' and 'emojianimated'
+            files = self.files_api.get_files(tag="emoji", n=100)
+            animated_files = self.files_api.get_files(tag="emojianimated", n=100)
+            
+            all_emojis = files + animated_files
+            
+            if all_emojis:
+                # The last item in the combined list will be an old emoji
+                oldest_file = all_emojis[-1]
+                log.info(f"Deleting old emoji file: {oldest_file.id}")
+                self.files_api.delete_file(oldest_file.id)
+                return True
+        except Exception as e:
+            log.error(f"Failed to cleanup old emojis: {e}")
+        return False
 
 # Global singleton
 vrc_client = VRChatClient()
