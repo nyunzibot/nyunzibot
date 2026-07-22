@@ -61,15 +61,28 @@ def setup(bot: discord.Client):
             
         # Download the emote
         try:
-            async with aiohttp.ClientSession() as session:
+            # Discord CDN often requires a User-Agent, otherwise it returns 403 Forbidden
+            headers = {"User-Agent": "DiscordBot (https://github.com/nyunzibot/nyunzibot, 1.0)"}
+            async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.get(emote_url) as resp:
                     if resp.status != 200:
-                        await interaction.followup.send("Failed to download the emote image from Discord.", ephemeral=True)
-                        return
-                    image_bytes = await resp.read()
+                        # Fallback to webp if png fails (Discord recently prefers webp for static)
+                        if emote_url.endswith('.png'):
+                            fallback_url = emote_url.replace('.png', '.webp')
+                            async with session.get(fallback_url) as resp2:
+                                if resp2.status != 200:
+                                    await interaction.followup.send(f"Failed to download the emote image from Discord (HTTP {resp2.status} on fallback, originally {resp.status}).", ephemeral=True)
+                                    return
+                                image_bytes = await resp2.read()
+                                emote_url = fallback_url # Update for embed thumbnail
+                        else:
+                            await interaction.followup.send(f"Failed to download the emote image from Discord (HTTP {resp.status}).", ephemeral=True)
+                            return
+                    else:
+                        image_bytes = await resp.read()
         except Exception as e:
             log.error(f"Error downloading emote: {e}")
-            await interaction.followup.send("Error downloading emote image.", ephemeral=True)
+            await interaction.followup.send(f"Error downloading emote image: {e}", ephemeral=True)
             return
 
         frames = 0
