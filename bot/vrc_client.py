@@ -143,6 +143,7 @@ class VRChatClient:
                         
                     response = self.api_client.call_api(
                         '/file/image', 'POST',
+                        header_params={'Content-Type': 'multipart/form-data'},
                         auth_settings=['authCookie'],
                         post_params=post_params,
                         files={'file': tmp_path}
