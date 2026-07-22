@@ -151,7 +151,8 @@ class VRChatClient:
                             header_params={'Content-Type': 'multipart/form-data'},
                             auth_settings=['authCookie'],
                             post_params=post_params,
-                            files={'file': tmp_path}
+                            files={'file': tmp_path},
+                            response_types_map={200: None}
                         )
                     except vrchatapi.rest.ApiException as e:
                         if e.status == 400 and "18 saved emoji" in str(e.body):
@@ -163,7 +164,8 @@ class VRChatClient:
                                     header_params={'Content-Type': 'multipart/form-data'},
                                     auth_settings=['authCookie'],
                                     post_params=post_params,
-                                    files={'file': tmp_path}
+                                    files={'file': tmp_path},
+                                    response_types_map={200: None}
                                 )
                             else:
                                 raise
