@@ -186,7 +186,8 @@ class VRChatClient:
                     self.api_client.call_api(
                         '/users/{userId}/boop', 'POST',
                         path_params={'userId': target_user_id},
-                        auth_settings=['authCookie']
+                        auth_settings=['authCookie'],
+                        response_types_map={200: None}
                     )
                 
                 return True, "Emoji uploaded and boop sent successfully!"
