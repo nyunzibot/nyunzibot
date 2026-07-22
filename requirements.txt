@@ -9,4 +9,4 @@ imageio-ffmpeg
 pixivpy-async
 aiohttp-socks==0.11.0
 vrchatapi
-pyotp
+pyotpimageio
