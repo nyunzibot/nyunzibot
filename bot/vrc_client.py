@@ -200,8 +200,11 @@ class VRChatClient:
                         response_types_map={200: None}
                     )
                 except vrchatapi.rest.ApiException as e:
-                    if e.status == 429 and "already booped" in str(e.body).lower():
-                        log.info("User was already booped recently, treating as success.")
+                    if e.status == 429:
+                        if e.body and "already booped" in str(e.body).lower():
+                            log.info("User was already booped recently, treating as success.")
+                        else:
+                            return False, "VRChat is rate-limiting boops right now. Please wait a bit and try again!"
                     else:
                         raise
                 
