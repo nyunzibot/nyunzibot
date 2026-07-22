@@ -75,6 +75,11 @@ def setup(bot: discord.Client):
             async with aiohttp.ClientSession(headers=headers) as session:
                 for ext in extensions:
                     test_url = f"https://cdn.discordapp.com/emojis/{emote_id}.{ext}"
+                    query_params = "?size=128"
+                    if is_animated:
+                        query_params += "&animated=true"
+                    test_url += query_params
+                    
                     async with session.get(test_url) as resp:
                         if resp.status == 200:
                             image_bytes = await resp.read()
