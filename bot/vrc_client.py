@@ -17,13 +17,13 @@ class VRChatClient:
         self.ready = False
         self.friends_cache: List[Tuple[str, str]] = []  # (display_name, id)
 
-    def initialize(self) -> bool:
-        """Initialize the VRChat API client and attempt to authenticate."""
+    async def initialize(self) -> bool:
+        """Initialize the VRChat API client and attempt to authenticate asynchronously."""
         if not self.username or not self.password:
             log.warning("VRC_USERNAME or VRC_PASSWORD is not set. VRChat features will be disabled.")
             return False
 
-        try:
+        def _sync_init():
             import vrchatapi
             from vrchatapi.api import authentication_api, users_api, files_api, friends_api
             from vrchatapi.exceptions import ApiException, UnauthorizedException
@@ -59,11 +59,14 @@ class VRChatClient:
                     raise e
                     
             log.info(f"Successfully authenticated to VRChat as {current_user.display_name}")
-            self.ready = True
-            
-            # Start background task to update friends
-            asyncio.create_task(self._friend_update_loop())
             return True
+
+        try:
+            self.ready = await asyncio.to_thread(_sync_init)
+            if self.ready:
+                # Start background task to update friends
+                asyncio.create_task(self._friend_update_loop())
+            return self.ready
             
         except Exception as e:
             log.error(f"Failed to authenticate with VRChat API: {e}")

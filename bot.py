@@ -28,7 +28,6 @@ def main():
         log.warning("TOKEN missing — bot cannot log in.")
 
     from bot.vrc_client import vrc_client
-    vrc_client.initialize()
 
     bot = create_bot()
 
@@ -51,6 +50,10 @@ def main():
     @bot.event
     async def on_ready():
         await start_server()
+        
+        from bot.vrc_client import vrc_client
+        await vrc_client.initialize()
+        
         try:
             await bot.tree.sync()  # global sync for DMs
         except discord.errors.HTTPException as e:
