@@ -31,6 +31,8 @@ class BoopVrcView(discord.ui.View):
         
         self.crop_mode = True
         self.current_fps = 0 # 0 means auto from gif/webp
+        self.grid_size: Optional[Tuple[int, int]] = None
+        self.background_color = "transparent"
         
         self.message: discord.Message | None = None
         self.processed_bytes: bytes = image_bytes
@@ -55,20 +57,41 @@ class BoopVrcView(discord.ui.View):
             fps_select.callback = self.fps_callback
             self.add_item(fps_select)
             
+            # Add Grid Size selector
+            grid_options = [
+                discord.SelectOption(label="Auto (Match frames)", value="0", default=(self.grid_size is None)),
+                discord.SelectOption(label="2x2 (4 frames)", value="2", default=(self.grid_size == (2, 2))),
+                discord.SelectOption(label="4x4 (16 frames)", value="4", default=(self.grid_size == (4, 4))),
+                discord.SelectOption(label="8x8 (64 frames)", value="8", default=(self.grid_size == (8, 8))),
+            ]
+            grid_select = ui.Select(placeholder="Select Grid Size", options=grid_options, row=1)
+            grid_select.callback = self.grid_size_callback
+            self.add_item(grid_select)
+            
+            # Add Background selector
+            bg_options = [
+                discord.SelectOption(label="Transparent Background", value="transparent", default=(self.background_color == "transparent")),
+                discord.SelectOption(label="Black Background", value="black", default=(self.background_color == "black")),
+                discord.SelectOption(label="White Background", value="white", default=(self.background_color == "white")),
+            ]
+            bg_select = ui.Select(placeholder="Select Background", options=bg_options, row=2)
+            bg_select.callback = self.background_callback
+            self.add_item(bg_select)
+            
             # Add Crop Toggle
             crop_btn = ui.Button(
                 label="Crop: Fill" if self.crop_mode else "Crop: Fit", 
                 style=discord.ButtonStyle.primary if self.crop_mode else discord.ButtonStyle.secondary,
-                row=1
+                row=3
             )
             crop_btn.callback = self.toggle_crop_callback
             self.add_item(crop_btn)
             
-        send_btn = ui.Button(label="Send Boop!", style=discord.ButtonStyle.success, row=1)
+        send_btn = ui.Button(label="Send Boop!", style=discord.ButtonStyle.success, row=3 if self.is_animated else 1)
         send_btn.callback = self.send_callback
         self.add_item(send_btn)
         
-        cancel_btn = ui.Button(label="Cancel", style=discord.ButtonStyle.danger, row=1)
+        cancel_btn = ui.Button(label="Cancel", style=discord.ButtonStyle.danger, row=3 if self.is_animated else 1)
         cancel_btn.callback = self.cancel_callback
         self.add_item(cancel_btn)
 
@@ -92,7 +115,9 @@ class BoopVrcView(discord.ui.View):
             sprite_bytes, num_frames, fps = await asyncio.to_thread(
                 generate_vrc_sprite_sheet, 
                 self.raw_image_bytes, 
-                self.crop_mode
+                self.crop_mode,
+                self.grid_size,
+                self.background_color
             )
             self.processed_bytes = sprite_bytes
             self.frames = num_frames
@@ -132,7 +157,31 @@ class BoopVrcView(discord.ui.View):
         
         self._update_buttons()
         kwargs = await self.get_preview_kwargs()
-        await interaction.edit_original_response(**kwargs, attachments=[])
+        file = kwargs.pop("file")
+        await interaction.edit_original_response(**kwargs, attachments=[file])
+
+    async def grid_size_callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        val = interaction.data.get("values", ["0"])[0]
+        if val == "0":
+            self.grid_size = None
+        else:
+            size = int(val)
+            self.grid_size = (size, size)
+            
+        self._update_buttons()
+        kwargs = await self.get_preview_kwargs()
+        file = kwargs.pop("file")
+        await interaction.edit_original_response(**kwargs, attachments=[file])
+
+    async def background_callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        self.background_color = interaction.data.get("values", ["transparent"])[0]
+        
+        self._update_buttons()
+        kwargs = await self.get_preview_kwargs()
+        file = kwargs.pop("file")
+        await interaction.edit_original_response(**kwargs, attachments=[file])
 
     async def toggle_crop_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -140,7 +189,8 @@ class BoopVrcView(discord.ui.View):
         
         self._update_buttons()
         kwargs = await self.get_preview_kwargs()
-        await interaction.edit_original_response(**kwargs, attachments=[])
+        file = kwargs.pop("file")
+        await interaction.edit_original_response(**kwargs, attachments=[file])
 
     async def send_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
