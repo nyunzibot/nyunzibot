@@ -12,9 +12,17 @@ def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True, grid_size: Op
     
     # Extract all frames
     frames = []
-    for frame in ImageSequence.Iterator(img):
-        # Convert to RGBA for transparency
-        frames.append(frame.convert("RGBA"))
+    if getattr(img, "is_animated", False):
+        try:
+            import imageio.v3 as iio
+            iio_frames = iio.imread(io.BytesIO(gif_bytes), index=None)
+            for f in iio_frames:
+                frames.append(Image.fromarray(f).convert("RGBA"))
+        except Exception:
+            for frame in ImageSequence.Iterator(img):
+                frames.append(frame.convert("RGBA"))
+    else:
+        frames.append(img.convert("RGBA"))
         
     num_frames = len(frames)
     
