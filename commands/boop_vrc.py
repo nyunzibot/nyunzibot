@@ -32,21 +32,19 @@ def setup(bot: discord.Client):
     @app_commands.allowed_installs(users=True, guilds=True)
     @app_commands.describe(
         emote="The Discord emote to use",
-        target="The Discord user to target",
         target_friend="The target VRChat friend to boop"
     )
     @app_commands.autocomplete(target_friend=friend_autocomplete)
     async def boop_vrc(
         interaction: discord.Interaction, 
         emote: str, 
-        target: discord.User,
         target_friend: str
     ):
         ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
 
-        log.info(f"[CMD] /boop-vrc actor={interaction.user.id} target={target.id} vrc_id={target_friend}")
+        log.info(f"[CMD] /boop-vrc actor={interaction.user.id} vrc_id={target_friend}")
 
         if not vrc_client.ready:
             await interaction.followup.send("VRChat client is not configured or failed to authenticate. Check bot configuration.", ephemeral=True)
@@ -102,8 +100,11 @@ def setup(bot: discord.Client):
         )
         
         if success:
+            # We don't have the VRChat display name easily accessible here (we only have the ID target_friend),
+            # but we can try to find it from the autocomplete cache.
+            target_display_name = next((name for name, vid in vrc_client.friends_cache if vid == target_friend), target_friend)
             embed = discord.Embed(
-                description=f"**{interaction.user.display_name}** booped **{target.display_name}** in VRChat!",
+                description=f"**{interaction.user.display_name}** booped **{target_display_name}** in VRChat!",
                 color=discord.Color.brand_green()
             )
             embed.set_thumbnail(url=emote_url)

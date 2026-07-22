@@ -76,11 +76,17 @@ class VRChatClient:
             try:
                 def _fetch():
                     import vrchatapi
-                    # fetch up to 100 friends (can be paginated if needed)
-                    return self.friends_api.get_friends(n=100)
+                    # Fetch online friends
+                    online = self.friends_api.get_friends(n=100, offline=False)
+                    # Fetch offline friends
+                    offline = self.friends_api.get_friends(n=100, offline=True)
+                    return online + offline
                 
                 friends = await asyncio.to_thread(_fetch)
-                self.friends_cache = [(f.display_name, f.id) for f in friends]
+                # Use a dict to deduplicate just in case, though they should be mutually exclusive
+                deduped = {f.id: f.display_name for f in friends}
+                self.friends_cache = [(name, vid) for vid, name in deduped.items()]
+                self.friends_cache.sort(key=lambda x: x[0].lower()) # sort alphabetically
                 log.info(f"VRChat friends cache updated, found {len(self.friends_cache)} friends.")
             except Exception as e:
                 log.error(f"Failed to fetch VRChat friends: {e}")
