@@ -10,14 +10,13 @@ from bot.vrc_client import vrc_client
 
 log = logging.getLogger("nyunzi")
 
-def extract_emote_url(emote_str: str) -> Optional[str]:
+def extract_emote_id_and_anim(emote_str: str) -> Optional[tuple[str, bool]]:
     # Match standard and animated custom emotes: <a:name:id> or <:name:id>
     match = re.search(r'<(a?):[a-zA-Z0-9_]+:([0-9]+)>', emote_str)
     if match:
         is_animated = bool(match.group(1))
         emote_id = match.group(2)
-        ext = "gif" if is_animated else "png"
-        return f"https://cdn.discordapp.com/emojis/{emote_id}.{ext}"
+        return emote_id, is_animated
     return None
 
 async def friend_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
@@ -54,32 +53,39 @@ def setup(bot: discord.Client):
             await interaction.followup.send("Invalid VRChat User ID. It should start with 'usr_'.", ephemeral=True)
             return
 
-        emote_url = extract_emote_url(emote)
-        if not emote_url:
+        extracted = extract_emote_id_and_anim(emote)
+        if not extracted:
             await interaction.followup.send("Could not extract a valid custom Discord emote from the input.", ephemeral=True)
             return
             
+        emote_id, is_animated = extracted
+        
+        # Determine the order of extensions to try based on whether it claims to be animated
+        if is_animated:
+            extensions = ['gif', 'webp', 'png']
+        else:
+            extensions = ['webp', 'png', 'gif']
+            
         # Download the emote
+        image_bytes = None
+        emote_url = None
         try:
             # Discord CDN often requires a User-Agent, otherwise it returns 403 Forbidden
             headers = {"User-Agent": "DiscordBot (https://github.com/nyunzibot/nyunzibot, 1.0)"}
             async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(emote_url) as resp:
-                    if resp.status != 200:
-                        # Fallback to webp if png fails (Discord recently prefers webp for static)
-                        if emote_url.endswith('.png'):
-                            fallback_url = emote_url.replace('.png', '.webp')
-                            async with session.get(fallback_url) as resp2:
-                                if resp2.status != 200:
-                                    await interaction.followup.send(f"Failed to download the emote image from Discord (HTTP {resp2.status} on fallback, originally {resp.status}).", ephemeral=True)
-                                    return
-                                image_bytes = await resp2.read()
-                                emote_url = fallback_url # Update for embed thumbnail
+                for ext in extensions:
+                    test_url = f"https://cdn.discordapp.com/emojis/{emote_id}.{ext}"
+                    async with session.get(test_url) as resp:
+                        if resp.status == 200:
+                            image_bytes = await resp.read()
+                            emote_url = test_url
+                            break
                         else:
-                            await interaction.followup.send(f"Failed to download the emote image from Discord (HTTP {resp.status}).", ephemeral=True)
-                            return
-                    else:
-                        image_bytes = await resp.read()
+                            log.debug(f"Tried {test_url}, got {resp.status}")
+                
+                if not image_bytes:
+                    await interaction.followup.send(f"Failed to download the emote image from Discord. All formats returned an error.", ephemeral=True)
+                    return
         except Exception as e:
             log.error(f"Error downloading emote: {e}")
             await interaction.followup.send(f"Error downloading emote image: {e}", ephemeral=True)
