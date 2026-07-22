@@ -39,6 +39,10 @@ def setup(bot: discord.Client):
         emote: str, 
         target_friend: str
     ):
+        if interaction.user.id != 715071360186974270:
+            await interaction.response.send_message("You are not authorized to use this command right now.", ephemeral=True)
+            return
+
         ok = await safe_defer(interaction, thinking=True)
         if not ok:
             return
