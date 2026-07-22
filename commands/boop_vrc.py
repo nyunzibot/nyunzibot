@@ -91,44 +91,21 @@ def setup(bot: discord.Client):
             await interaction.followup.send(f"Error downloading emote image: {e}", ephemeral=True)
             return
 
-        frames = 0
-        frames_over_time = 0
         filename = f"emote.{'gif' if emote_url.endswith('.gif') else ('webp' if emote_url.endswith('.webp') else 'png')}"
         
-        if is_animated:
-            try:
-                from bot.sprite_generator import generate_vrc_sprite_sheet
-                import asyncio
-                
-                # generate_vrc_sprite_sheet is CPU bound, run in thread
-                sprite_bytes, num_frames, fps = await asyncio.to_thread(generate_vrc_sprite_sheet, image_bytes)
-                
-                image_bytes = sprite_bytes
-                frames = num_frames
-                frames_over_time = fps
-                filename = "emote.png" # VRChat expects PNG sprite sheet
-            except Exception as e:
-                log.error(f"Failed to generate sprite sheet: {e}")
-                await interaction.followup.send("Failed to process animated emote into VRChat sprite sheet.", ephemeral=True)
-                return
-
-        # Upload and Boop
-        success, msg = await vrc_client.upload_emoji_and_boop(
-            target_friend, image_bytes, filename, 
-            frames=frames, frames_over_time=frames_over_time
+        target_display_name = next((name for name, vid in vrc_client.friends_cache if vid == target_friend), target_friend)
+        
+        from views.boop_vrc_view import BoopVrcView
+        
+        view = BoopVrcView(
+            original_actor=interaction.user,
+            target_friend=target_friend,
+            image_bytes=image_bytes,
+            filename=filename,
+            is_animated=is_animated,
+            target_display_name=target_display_name,
+            emote_url=emote_url
         )
         
-        if success:
-            # We don't have the VRChat display name easily accessible here (we only have the ID target_friend),
-            # but we can try to find it from the autocomplete cache.
-            target_display_name = next((name for name, vid in vrc_client.friends_cache if vid == target_friend), target_friend)
-            embed = discord.Embed(
-                description=f"**{interaction.user.display_name}** booped **{target_display_name}** in VRChat!",
-                color=discord.Color.brand_green()
-            )
-            embed.set_thumbnail(url=emote_url)
-            embed.set_footer(text=f"Target VRC ID: {target_friend}")
-            await interaction.followup.send(embed=embed)
-        else:
-            await interaction.followup.send(f"Failed to boop in VRChat: {msg}", ephemeral=True)
-
+        kwargs = await view.get_preview_kwargs()
+        view.message = await interaction.followup.send(**kwargs)

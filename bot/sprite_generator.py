@@ -1,9 +1,9 @@
 import io
 import math
 from typing import Tuple
-from PIL import Image, ImageSequence
+from PIL import Image, ImageSequence, ImageOps
 
-def generate_vrc_sprite_sheet(gif_bytes: bytes) -> Tuple[bytes, int, int]:
+def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True) -> Tuple[bytes, int, int]:
     """
     Takes raw GIF bytes and generates a 1024x1024 sprite sheet PNG suitable for VRChat.
     Returns (png_bytes, frames_count, frames_over_time).
@@ -51,12 +51,16 @@ def generate_vrc_sprite_sheet(gif_bytes: bytes) -> Tuple[bytes, int, int]:
     sprite_sheet = Image.new("RGBA", (SHEET_SIZE, SHEET_SIZE), (0, 0, 0, 0))
     
     for i, frame in enumerate(frames):
-        # Resize frame to fit cell, maintaining aspect ratio
-        frame.thumbnail((cell_w, cell_h), Image.Resampling.LANCZOS)
-        
-        # Center in cell
-        x = (i % cols) * cell_w + (cell_w - frame.width) // 2
-        y = (i // cols) * cell_h + (cell_h - frame.height) // 2
+        if crop:
+            # Resize and crop to fill the cell perfectly
+            frame = ImageOps.fit(frame, (cell_w, cell_h), Image.Resampling.LANCZOS)
+            x = (i % cols) * cell_w
+            y = (i // cols) * cell_h
+        else:
+            # Resize frame to fit cell, maintaining aspect ratio (adds padding)
+            frame.thumbnail((cell_w, cell_h), Image.Resampling.LANCZOS)
+            x = (i % cols) * cell_w + (cell_w - frame.width) // 2
+            y = (i // cols) * cell_h + (cell_h - frame.height) // 2
         
         sprite_sheet.paste(frame, (x, y), frame)
         
