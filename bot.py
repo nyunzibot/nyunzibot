@@ -17,6 +17,7 @@ from commands import pat as pat_cmd
 from commands import hug as hug_cmd
 from commands import poke as poke_cmd
 from commands import tuck as tuck_cmd
+from commands import boop_vrc as boop_vrc_cmd
 
 def main():
     log = setup_logging()
@@ -25,6 +26,9 @@ def main():
 
     if not TOKEN:
         log.warning("TOKEN missing — bot cannot log in.")
+
+    from bot.vrc_client import vrc_client
+    vrc_client.initialize()
 
     bot = create_bot()
 
@@ -42,6 +46,7 @@ def main():
     hug_cmd.setup(bot)
     poke_cmd.setup(bot)
     tuck_cmd.setup(bot)
+    boop_vrc_cmd.setup(bot)
 
     @bot.event
     async def on_ready():

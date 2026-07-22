@@ -8,3 +8,5 @@ imageio-ffmpeg
 #tensorflow-hub
 pixivpy-async
 aiohttp-socks==0.11.0
+vrchatapi
+pyotp
