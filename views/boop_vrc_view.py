@@ -68,30 +68,20 @@ class BoopVrcView(discord.ui.View):
             grid_select.callback = self.grid_size_callback
             self.add_item(grid_select)
             
-            # Add Background selector
-            bg_options = [
-                discord.SelectOption(label="Transparent Background", value="transparent", default=(self.background_color == "transparent")),
-                discord.SelectOption(label="Black Background", value="black", default=(self.background_color == "black")),
-                discord.SelectOption(label="White Background", value="white", default=(self.background_color == "white")),
-            ]
-            bg_select = ui.Select(placeholder="Select Background", options=bg_options, row=2)
-            bg_select.callback = self.background_callback
-            self.add_item(bg_select)
-            
             # Add Crop Toggle
             crop_btn = ui.Button(
                 label="Crop: Fill" if self.crop_mode else "Crop: Fit", 
                 style=discord.ButtonStyle.primary if self.crop_mode else discord.ButtonStyle.secondary,
-                row=3
+                row=2
             )
             crop_btn.callback = self.toggle_crop_callback
             self.add_item(crop_btn)
             
-        send_btn = ui.Button(label="Send Boop!", style=discord.ButtonStyle.success, row=3 if self.is_animated else 1)
+        send_btn = ui.Button(label="Send Boop!", style=discord.ButtonStyle.success, row=2 if self.is_animated else 1)
         send_btn.callback = self.send_callback
         self.add_item(send_btn)
         
-        cancel_btn = ui.Button(label="Cancel", style=discord.ButtonStyle.danger, row=3 if self.is_animated else 1)
+        cancel_btn = ui.Button(label="Cancel", style=discord.ButtonStyle.danger, row=2 if self.is_animated else 1)
         cancel_btn.callback = self.cancel_callback
         self.add_item(cancel_btn)
 
@@ -169,15 +159,6 @@ class BoopVrcView(discord.ui.View):
             size = int(val)
             self.grid_size = (size, size)
             
-        self._update_buttons()
-        kwargs = await self.get_preview_kwargs()
-        file = kwargs.pop("file")
-        await interaction.edit_original_response(**kwargs, attachments=[file])
-
-    async def background_callback(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        self.background_color = interaction.data.get("values", ["transparent"])[0]
-        
         self._update_buttons()
         kwargs = await self.get_preview_kwargs()
         file = kwargs.pop("file")

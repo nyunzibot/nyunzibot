@@ -140,9 +140,8 @@ class VRChatClient:
                     if frames > 0:
                         post_params.append(('frames', str(frames)))
                         post_params.append(('framesOverTime', str(frames_over_time)))
-                        post_params.append(('animationStyle', 'bounce'))
-                    else:
-                        post_params.append(('animationStyle', 'stop'))
+                    
+                    post_params.append(('animationStyle', 'stop'))
                         
                     try:
                         import vrchatapi

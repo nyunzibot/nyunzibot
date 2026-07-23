@@ -17,6 +17,19 @@ def extract_emote_id_and_anim(emote_str: str) -> Optional[tuple[str, bool]]:
         is_animated = bool(match.group(1))
         emote_id = match.group(2)
         return emote_id, is_animated
+        
+    # Match direct Discord emoji URLs
+    url_match = re.search(r'cdn\.discordapp\.com/emojis/([0-9]+)\.(webp|gif|png)', emote_str)
+    if url_match:
+        emote_id = url_match.group(1)
+        ext = url_match.group(2)
+        is_animated = False
+        if ext == 'gif':
+            is_animated = True
+        elif 'animated=true' in emote_str.lower():
+            is_animated = True
+        return emote_id, is_animated
+
     return None
 
 async def friend_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
