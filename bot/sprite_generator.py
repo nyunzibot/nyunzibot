@@ -51,8 +51,14 @@ def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True, grid_size: Op
             frames = subsampled_frames
             num_frames = 64
             
-        cols = math.ceil(math.sqrt(num_frames))
-        rows = math.ceil(num_frames / cols)
+        # VRChat only supports specific square grid arrangements: 2x2, 4x4, and 8x8.
+        # It maps the UVs based on these buckets.
+        if num_frames <= 4:
+            cols = rows = 2
+        elif num_frames <= 16:
+            cols = rows = 4
+        else:
+            cols = rows = 8
         
     # Minimum 2 frames for animated
     if num_frames < 2:
