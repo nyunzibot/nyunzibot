@@ -16,6 +16,9 @@ def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True, grid_size: Op
         try:
             import imageio.v3 as iio
             iio_frames = iio.imread(io.BytesIO(gif_bytes), index=None)
+            # If imageio returns a single image (H, W, C), it failed to read as animated
+            if len(iio_frames.shape) == 3 and iio_frames.shape[-1] in (3, 4):
+                raise ValueError("imageio returned a single frame")
             for f in iio_frames:
                 frames.append(Image.fromarray(f).convert("RGBA"))
         except Exception:
