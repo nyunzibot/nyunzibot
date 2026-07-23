@@ -136,14 +136,12 @@ class VRChatClient:
                     # NOTE: Python requests is cleaner for multipart but we can use api_client if it supports it.
                     # call_api expects post_params instead of files
                     # Let's use call_api
-                    post_params = [('tag', 'emoji')]
+                    post_params = [('tag', 'emojianimated' if frames > 0 else 'emoji')]
                     if frames > 0:
                         post_params.append(('frames', str(frames)))
                         post_params.append(('framesOverTime', str(frames_over_time)))
-                    
-                    # animationStyle is not typically needed for animated sprite sheets (or causes panning issues)
-                    # For static, you can use stop. Let's just always use 'stop' to prevent weird UV panning.
-                    post_params.append(('animationStyle', 'stop'))
+                    else:
+                        post_params.append(('animationStyle', 'stop'))
                         
                     try:
                         import vrchatapi
