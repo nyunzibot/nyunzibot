@@ -3,10 +3,10 @@ import math
 from typing import Tuple, Optional
 from PIL import Image, ImageSequence, ImageOps
 
-def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True, grid_size: Optional[Tuple[int, int]] = None, background: str = 'transparent') -> Tuple[bytes, int, int]:
+def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True, grid_size: Optional[Tuple[int, int]] = None, background: str = 'transparent', target_fps: int = 0) -> Tuple[bytes, bytes, int, int]:
     """
     Takes raw GIF bytes and generates a 1024x1024 sprite sheet PNG suitable for VRChat.
-    Returns (png_bytes, frames_count, frames_over_time).
+    Returns (png_bytes, preview_gif_bytes, frames_count, frames_over_time).
     """
     img = Image.open(io.BytesIO(gif_bytes))
     
@@ -87,23 +87,40 @@ def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True, grid_size: Op
         
     sprite_sheet = Image.new("RGBA", (SHEET_SIZE, SHEET_SIZE), bg_color)
     
+    processed_frames = []
+    
     for i, frame in enumerate(frames):
         if crop:
             # Resize and crop to fill the cell perfectly
             frame = ImageOps.fit(frame, (cell_w, cell_h), Image.Resampling.LANCZOS)
             x = (i % cols) * cell_w
             y = (i // cols) * cell_h
+            
+            processed_frames.append(frame.copy())
+            
+            # If pasting onto a solid background, we need to use the frame as a mask
+            if background in ('black', 'white'):
+                sprite_sheet.paste(frame, (x, y), frame)
+            else:
+                sprite_sheet.paste(frame, (x, y))
         else:
             # Resize frame to fit cell, maintaining aspect ratio (adds padding)
             frame.thumbnail((cell_w, cell_h), Image.Resampling.LANCZOS)
             x = (i % cols) * cell_w + (cell_w - frame.width) // 2
             y = (i // cols) * cell_h + (cell_h - frame.height) // 2
-        
-        # If pasting onto a solid background, we need to use the frame as a mask
-        if background in ('black', 'white'):
-            sprite_sheet.paste(frame, (x, y), frame)
-        else:
-            sprite_sheet.paste(frame, (x, y))
+            
+            # Create a padded frame for the animated GIF preview so it matches the cell size
+            pad_bg = bg_color if background in ('black', 'white') else (0, 0, 0, 0)
+            padded_frame = Image.new("RGBA", (cell_w, cell_h), pad_bg)
+            
+            if background in ('black', 'white'):
+                sprite_sheet.paste(frame, (x, y), frame)
+                padded_frame.paste(frame, ((cell_w - frame.width) // 2, (cell_h - frame.height) // 2), frame)
+            else:
+                sprite_sheet.paste(frame, (x, y))
+                padded_frame.paste(frame, ((cell_w - frame.width) // 2, (cell_h - frame.height) // 2))
+                
+            processed_frames.append(padded_frame)
         
     # Export to bytes
     out_io = io.BytesIO()
@@ -116,7 +133,26 @@ def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True, grid_size: Op
         
     fps = int(1000 / duration_ms)
     
+    if target_fps > 0:
+        fps = target_fps
+    
     # VRChat allows 1-64 FPS
     fps = max(1, min(64, fps))
     
-    return out_io.getvalue(), num_frames, fps
+    # Generate animated GIF preview
+    preview_io = io.BytesIO()
+    if len(processed_frames) > 0:
+        # Calculate duration in ms for the GIF based on fps
+        preview_duration = int(1000 / fps)
+        processed_frames[0].save(
+            preview_io, 
+            format="GIF", 
+            save_all=True, 
+            append_images=processed_frames[1:], 
+            duration=preview_duration, 
+            loop=0,
+            disposal=2,
+            transparency=0
+        )
+    
+    return out_io.getvalue(), preview_io.getvalue(), num_frames, fps

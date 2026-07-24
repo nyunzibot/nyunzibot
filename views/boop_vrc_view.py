@@ -36,6 +36,7 @@ class BoopVrcView(discord.ui.View):
         
         self.message: discord.Message | None = None
         self.processed_bytes: bytes = image_bytes
+        self.preview_bytes: bytes = b""
         self.frames = 0
         self.frames_over_time = 0
         
@@ -48,9 +49,13 @@ class BoopVrcView(discord.ui.View):
             # Add FPS selector
             fps_options = [
                 discord.SelectOption(label="Auto (from image)", value="0", default=(self.current_fps == 0)),
+                discord.SelectOption(label="5 FPS", value="5", default=(self.current_fps == 5)),
+                discord.SelectOption(label="10 FPS", value="10", default=(self.current_fps == 10)),
                 discord.SelectOption(label="15 FPS", value="15", default=(self.current_fps == 15)),
+                discord.SelectOption(label="20 FPS", value="20", default=(self.current_fps == 20)),
                 discord.SelectOption(label="24 FPS", value="24", default=(self.current_fps == 24)),
                 discord.SelectOption(label="30 FPS", value="30", default=(self.current_fps == 30)),
+                discord.SelectOption(label="45 FPS", value="45", default=(self.current_fps == 45)),
                 discord.SelectOption(label="60 FPS", value="60", default=(self.current_fps == 60)),
             ]
             fps_select = ui.Select(placeholder="Select FPS", options=fps_options, row=0)
@@ -102,20 +107,19 @@ class BoopVrcView(discord.ui.View):
         from bot.sprite_generator import generate_vrc_sprite_sheet
         
         try:
-            sprite_bytes, num_frames, fps = await asyncio.to_thread(
+            sprite_bytes, preview_bytes, num_frames, fps = await asyncio.to_thread(
                 generate_vrc_sprite_sheet, 
                 self.raw_image_bytes, 
                 self.crop_mode,
                 self.grid_size,
-                self.background_color
+                self.background_color,
+                self.current_fps
             )
             self.processed_bytes = sprite_bytes
+            self.preview_bytes = preview_bytes
             self.frames = num_frames
             
-            if self.current_fps > 0:
-                self.frames_over_time = self.current_fps
-            else:
-                self.frames_over_time = fps
+            self.frames_over_time = fps
         except Exception as e:
             log.error(f"Failed to generate sprite sheet in UI: {e}")
 
@@ -125,20 +129,29 @@ class BoopVrcView(discord.ui.View):
         
         embed = discord.Embed(
             title="Preview VRChat Emoji",
-            description=f"Previewing boop for **{self.target_display_name}**.\nReview the sprite sheet below.",
+            description=f"Previewing boop for **{self.target_display_name}**.\nReview the animated preview and sprite sheet below.",
             color=discord.Color.blurple()
         )
         
+        files = []
         if self.is_animated:
             embed.add_field(name="Settings", value=f"Crop Mode: {'Fill' if self.crop_mode else 'Fit'}\nFPS: {self.frames_over_time} (Total Frames: {self.frames})")
             
-        file_ext = "png" if self.is_animated else ("gif" if self.filename.endswith(".gif") else "webp")
-        file_name = f"preview.{file_ext}"
+            sprite_file = discord.File(fp=io.BytesIO(self.processed_bytes), filename="spritesheet.png")
+            preview_file = discord.File(fp=io.BytesIO(self.preview_bytes), filename="preview.gif")
+            
+            embed.set_image(url="attachment://preview.gif")
+            embed.set_thumbnail(url="attachment://spritesheet.png")
+            files = [preview_file, sprite_file]
+        else:
+            file_ext = "png" if self.is_animated else ("gif" if self.filename.endswith(".gif") else "webp")
+            file_name = f"preview.{file_ext}"
+            
+            file = discord.File(fp=io.BytesIO(self.processed_bytes), filename=file_name)
+            embed.set_image(url=f"attachment://{file_name}")
+            files = [file]
         
-        file = discord.File(fp=io.BytesIO(self.processed_bytes), filename=file_name)
-        embed.set_image(url=f"attachment://{file_name}")
-        
-        return {"embed": embed, "file": file, "view": self}
+        return {"embed": embed, "files": files, "view": self}
 
     async def fps_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -147,8 +160,8 @@ class BoopVrcView(discord.ui.View):
         
         self._update_buttons()
         kwargs = await self.get_preview_kwargs()
-        file = kwargs.pop("file")
-        await interaction.edit_original_response(**kwargs, attachments=[file])
+        files = kwargs.pop("files")
+        await interaction.edit_original_response(**kwargs, attachments=files)
 
     async def grid_size_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -161,8 +174,8 @@ class BoopVrcView(discord.ui.View):
             
         self._update_buttons()
         kwargs = await self.get_preview_kwargs()
-        file = kwargs.pop("file")
-        await interaction.edit_original_response(**kwargs, attachments=[file])
+        files = kwargs.pop("files")
+        await interaction.edit_original_response(**kwargs, attachments=files)
 
     async def toggle_crop_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -170,8 +183,8 @@ class BoopVrcView(discord.ui.View):
         
         self._update_buttons()
         kwargs = await self.get_preview_kwargs()
-        file = kwargs.pop("file")
-        await interaction.edit_original_response(**kwargs, attachments=[file])
+        files = kwargs.pop("files")
+        await interaction.edit_original_response(**kwargs, attachments=files)
 
     async def send_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
