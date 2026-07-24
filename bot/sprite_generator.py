@@ -10,13 +10,11 @@ def generate_vrc_static_emoji(image_bytes: bytes) -> bytes:
     """
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     
-    # Determine the size of the square (at least 256x256)
+    # Determine the size of the square
     size = max(img.width, img.height)
-    if size < 256:
-        size = 256
         
     padded = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    img.thumbnail((size, size), Image.Resampling.LANCZOS)
+
     
     px = (size - img.width) // 2
     py = (size - img.height) // 2
