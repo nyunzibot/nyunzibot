@@ -3,6 +3,29 @@ import math
 from typing import Tuple, Optional
 from PIL import Image, ImageSequence, ImageOps
 
+def generate_vrc_static_emoji(image_bytes: bytes) -> bytes:
+    """
+    Takes raw image bytes and converts it to a square 1:1 aspect ratio PNG with transparent padding.
+    VRChat API requires a 1:1 aspect ratio.
+    """
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    
+    # Determine the size of the square (at least 256x256)
+    size = max(img.width, img.height)
+    if size < 256:
+        size = 256
+        
+    padded = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    img.thumbnail((size, size), Image.Resampling.LANCZOS)
+    
+    px = (size - img.width) // 2
+    py = (size - img.height) // 2
+    padded.paste(img, (px, py))
+    
+    out_io = io.BytesIO()
+    padded.save(out_io, format="PNG")
+    return out_io.getvalue()
+
 def generate_vrc_sprite_sheet(gif_bytes: bytes, crop: bool = True, grid_size: Optional[Tuple[int, int]] = None, background: str = 'transparent', target_fps: int = 0) -> Tuple[bytes, bytes, int, int]:
     """
     Takes raw GIF bytes and generates a 1024x1024 sprite sheet PNG suitable for VRChat.

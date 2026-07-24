@@ -98,13 +98,17 @@ class BoopVrcView(discord.ui.View):
 
     async def _process_image(self):
         """Processes the sprite sheet based on current settings"""
+        from bot.sprite_generator import generate_vrc_sprite_sheet, generate_vrc_static_emoji
+        
         if not self.is_animated:
-            self.processed_bytes = self.raw_image_bytes
+            try:
+                self.processed_bytes = await asyncio.to_thread(generate_vrc_static_emoji, self.raw_image_bytes)
+            except Exception as e:
+                log.error(f"Failed to generate static emoji: {e}")
+                self.processed_bytes = self.raw_image_bytes
             self.frames = 0
             self.frames_over_time = 0
             return
-
-        from bot.sprite_generator import generate_vrc_sprite_sheet
         
         try:
             sprite_bytes, preview_bytes, num_frames, fps = await asyncio.to_thread(
